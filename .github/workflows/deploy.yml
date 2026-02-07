@@ -1,0 +1,39 @@
+name: Deploy to AWS Lightsail
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Copy files via SSH
+        uses: appleboy/scp-action@master
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.KEY }}
+          source: "."
+          target: "/home/ubuntu/chat-app"
+
+      - name: Restart Docker Containers
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.KEY }}
+          script: |
+            cd /home/ubuntu/chat-app
+            # .env 파일은 보안상 GitHub에 없으므로 서버에서 직접 생성 (또는 유지)
+            if [ ! -f .env ]; then
+              echo "OPENAI_API_KEY=sk-placeholder" > .env
+            fi
+            # 도커 재시작
+            sudo docker-compose down
+            sudo docker-compose up -d --build
+            sudo docker system prune -f # 청소까지 깔끔하게
