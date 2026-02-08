@@ -7,30 +7,73 @@
   <style>
     * { box-sizing: border-box; }
     body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; display: flex; flex-direction: column; }
-    .container { max-width: 480px; margin: 0 auto; padding: 16px; flex: 1; display: flex; flex-direction: column; }
+    .container { max-width: 480px; margin: 0 auto; padding: 16px; flex: 1; display: flex; flex-direction: column; width: 100%; }
     h1 { font-size: 1.5rem; margin: 0 0 8px; background: linear-gradient(90deg, #818cf8, #c084fc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
     .sub { color: #94a3b8; font-size: 0.875rem; margin-bottom: 24px; }
-    .state { padding: 12px; border-radius: 8px; background: #1e293b; margin-bottom: 16px; font-size: 0.875rem; color: #94a3b8; }
+    .state { padding: 12px; border-radius: 8px; background: #1e293b; margin-bottom: 16px; font-size: 0.875rem; color: #94a3b8; transition: all 0.4s ease; }
     .state.in { background: #1e3a2f; color: #86efac; }
+    .state.sending { background: #1e1b4b; color: #a5b4fc; }
     #sendArea { display: flex; gap: 8px; margin-bottom: 16px; }
-    #broadcastInput { flex: 1; padding: 12px 16px; border-radius: 24px; border: 1px solid #334155; background: #1e293b; color: #e2e8f0; font-size: 1rem; }
+    #broadcastInput { flex: 1; padding: 12px 16px; border-radius: 24px; border: 1px solid #334155; background: #1e293b; color: #e2e8f0; font-size: 1rem; outline: none; transition: border-color 0.3s; }
+    #broadcastInput:focus { border-color: #6366f1; }
     #broadcastInput::placeholder { color: #64748b; }
-    .btn { padding: 12px 20px; border-radius: 24px; border: none; font-weight: 600; cursor: pointer; font-size: 0.9375rem; }
+    .btn { padding: 12px 20px; border-radius: 24px; border: none; font-weight: 600; cursor: pointer; font-size: 0.9375rem; transition: opacity 0.2s; }
+    .btn:active { opacity: 0.7; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
     .btn.primary { background: linear-gradient(135deg, #6366f1, #a855f7); color: white; }
     .btn.secondary { background: #334155; color: #94a3b8; }
     .btn.danger { background: #7f1d1d; color: #fca5a5; }
     #messages { flex: 1; overflow-y: auto; min-height: 200px; padding: 8px 0; }
-    .msg { margin-bottom: 12px; padding: 10px 14px; border-radius: 16px; max-width: 85%; }
+    .msg { margin-bottom: 12px; padding: 10px 14px; border-radius: 16px; max-width: 85%; animation: msgIn 0.3s ease; }
     .msg.me { margin-left: auto; background: #4338ca; color: white; border-bottom-right-radius: 4px; }
     .msg.partner { background: #1e293b; border: 1px solid #334155; border-bottom-left-radius: 4px; }
     .msg .who { font-size: 0.7rem; color: #94a3b8; margin-bottom: 4px; }
     #chatArea { display: none; flex: 1; flex-direction: column; }
     #chatArea.visible { display: flex; }
     #chatInputRow { display: flex; gap: 8px; margin-top: 12px; }
-    #chatInput { flex: 1; padding: 12px 16px; border-radius: 24px; border: 1px solid #334155; background: #1e293b; color: #e2e8f0; font-size: 1rem; }
+    #chatInput { flex: 1; padding: 12px 16px; border-radius: 24px; border: 1px solid #334155; background: #1e293b; color: #e2e8f0; font-size: 1rem; outline: none; }
+    #chatInput:focus { border-color: #6366f1; }
     .error { color: #f87171; font-size: 0.875rem; margin-top: 8px; }
     .test-badge { display: inline-block; background: #f59e0b; color: #000; font-size: 0.65rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; margin-bottom: 4px; font-family: monospace; }
     .test-banner { background: #422006; color: #fbbf24; text-align: center; padding: 6px; font-size: 0.75rem; font-weight: 600; }
+
+    /* 전파 송신 애니메이션 */
+    .wave-anim { display: none; text-align: center; padding: 40px 0; }
+    .wave-anim.visible { display: block; }
+    .wave-anim .ripple-wrap { position: relative; width: 100px; height: 100px; margin: 0 auto 20px; }
+    .wave-anim .ripple {
+      position: absolute; top: 50%; left: 50%; width: 20px; height: 20px;
+      margin: -10px 0 0 -10px; border-radius: 50%;
+      border: 2px solid #818cf8; opacity: 0;
+      animation: ripple 2s ease-out infinite;
+    }
+    .wave-anim .ripple:nth-child(2) { animation-delay: 0.5s; }
+    .wave-anim .ripple:nth-child(3) { animation-delay: 1.0s; }
+    .wave-anim .dot {
+      position: absolute; top: 50%; left: 50%; width: 12px; height: 12px;
+      margin: -6px 0 0 -6px; border-radius: 50%;
+      background: linear-gradient(135deg, #818cf8, #c084fc);
+      animation: pulse 1.2s ease-in-out infinite;
+    }
+    .wave-anim .wave-text { color: #94a3b8; font-size: 0.9rem; }
+    .wave-anim .wave-text.found { color: #86efac; font-weight: 600; animation: fadeUp 0.5s ease; }
+
+    @keyframes ripple {
+      0% { width: 20px; height: 20px; margin: -10px 0 0 -10px; opacity: 0.6; }
+      100% { width: 120px; height: 120px; margin: -60px 0 0 -60px; opacity: 0; }
+    }
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.4); opacity: 0.6; }
+    }
+    @keyframes msgIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
   </style>
 </head>
 <body>
@@ -44,6 +87,17 @@
     <div id="sendArea">
       <input type="text" id="broadcastInput" placeholder="메시지를 입력하고 전파를 보내요" maxlength="2000" />
       <button type="button" class="btn primary" id="sendBroadcast">전송</button>
+    </div>
+
+    <!-- 전파 송신 애니메이션 -->
+    <div class="wave-anim" id="waveAnim">
+      <div class="ripple-wrap">
+        <div class="dot"></div>
+        <div class="ripple"></div>
+        <div class="ripple"></div>
+        <div class="ripple"></div>
+      </div>
+      <div class="wave-text" id="waveText">전파를 보내는 중...</div>
     </div>
 
     <div id="chatArea" class="chatArea">
@@ -70,6 +124,8 @@
     const sendChatBtn = document.getElementById('sendChat');
     const endBtn = document.getElementById('endBtn');
     const errorEl = document.getElementById('error');
+    const waveAnim = document.getElementById('waveAnim');
+    const waveText = document.getElementById('waveText');
 
     const urlParams = new URLSearchParams(window.location.search);
     const isTestMode = urlParams.get('test') === '1';
@@ -77,6 +133,8 @@
 
     let socket = null;
     let currentPairId = null;
+    let pendingBroadcastText = '';
+    let waitingForFirstReply = false;
 
     function showError(msg) {
       errorEl.textContent = msg || '';
@@ -97,22 +155,68 @@
       d.textContent = s;
       return d.innerHTML;
     }
+
     let testCount = 0;
     function setMode(mode) {
       if (mode === 'idle') {
         currentPairId = null;
+        waitingForFirstReply = false;
         stateEl.textContent = isTestMode ? '전파를 보내보세요. (테스트 #' + (testCount + 1) + '/16)' : '전파를 보내보세요.';
-        stateEl.classList.remove('in');
+        stateEl.classList.remove('in', 'sending');
         sendArea.style.display = 'flex';
+        waveAnim.classList.remove('visible');
         chatArea.classList.remove('visible');
         messagesEl.innerHTML = '';
-      } else {
+        sendBroadcastBtn.disabled = false;
+      } else if (mode === 'sending') {
+        // 전파 보내는 중 연출
+        stateEl.textContent = '전파를 보내는 중...';
+        stateEl.classList.add('sending');
+        stateEl.classList.remove('in');
+        sendArea.style.display = 'none';
+        waveAnim.classList.add('visible');
+        waveText.textContent = '전파를 보내는 중...';
+        waveText.classList.remove('found');
+        chatArea.classList.remove('visible');
+      } else if (mode === 'searching') {
+        // 주파수 탐색 중 연출
+        stateEl.textContent = '주파수를 탐색하고 있어요...';
+        waveText.textContent = '주파수를 탐색하고 있어요...';
+      } else if (mode === 'found') {
+        // 응답 도착 연출
+        stateEl.textContent = '응답이 도착했어요!';
+        stateEl.classList.remove('sending');
+        stateEl.classList.add('in');
+        waveText.textContent = '응답이 도착했어요!';
+        waveText.classList.add('found');
+      } else if (mode === 'in') {
         if (isTestMode) testCount++;
         stateEl.textContent = '누군가와 연결되었어요.';
+        stateEl.classList.remove('sending');
         stateEl.classList.add('in');
         sendArea.style.display = 'none';
+        waveAnim.classList.remove('visible');
         chatArea.classList.add('visible');
+        chatInput.focus();
       }
+    }
+
+    // 전파 송신 시퀀스
+    function startBroadcastSequence(text) {
+      pendingBroadcastText = text;
+      sendBroadcastBtn.disabled = true;
+      setMode('sending');
+
+      // 1단계: "전파를 보내는 중..." (1.2초)
+      setTimeout(() => {
+        setMode('searching');
+
+        // 2단계: "주파수를 탐색하고 있어요..." (1.3초 후 실제 전송)
+        setTimeout(() => {
+          socket.emit('send_broadcast', { text: pendingBroadcastText });
+          waitingForFirstReply = true;
+        }, 1300);
+      }, 1200);
     }
 
     function connect() {
@@ -122,33 +226,59 @@
         setMode('idle');
       });
       socket.on('connect_error', () => showError('연결 실패. 새로고침 해보세요.'));
+
       socket.on('broadcast_delivered', (data) => {
         currentPairId = data.pairId;
-        setMode('in');
-        addMessage('me', broadcastInput.value.trim());
-        broadcastInput.value = '';
+        // 아직 애니메이션 화면에 머물러 있음 - 첫 응답을 기다림
       });
+
       socket.on('broadcast_received', (data) => {
         currentPairId = data.pairId;
-        setMode('in');
-        addMessage('partner', data.text || '');
+        setMode('found');
+        setTimeout(() => {
+          setMode('in');
+          addMessage('partner', data.text || '');
+        }, 800);
       });
+
       socket.on('message', (data) => {
-        addMessage('partner', (data && data.text) || '', data && data._personaId);
+        const text = (data && data.text) || '';
+        const pid = data && data._personaId;
+
+        if (waitingForFirstReply) {
+          // 첫 응답 도착 → "응답이 도착했어요!" 연출
+          waitingForFirstReply = false;
+          setMode('found');
+          setTimeout(() => {
+            setMode('in');
+            addMessage('me', pendingBroadcastText);
+            setTimeout(() => {
+              addMessage('partner', text, pid);
+            }, 400);
+          }, 1000);
+        } else {
+          addMessage('partner', text, pid);
+        }
       });
+
       socket.on('partner_ended', () => {
         addMessage('partner', '(상대가 대화를 종료했어요)');
-        setMode('idle');
+        setTimeout(() => setMode('idle'), 1500);
       });
       socket.on('conversation_ended', () => setMode('idle'));
-      socket.on('broadcast_error', (data) => showError((data && data.message) || '전송 실패'));
+      socket.on('broadcast_error', (data) => {
+        showError((data && data.message) || '전송 실패');
+        setMode('idle');
+      });
     }
 
     sendBroadcastBtn.addEventListener('click', () => {
       const text = broadcastInput.value.trim();
       if (!text) return showError('메시지를 입력해주세요.');
       showError('');
-      socket.emit('send_broadcast', { text });
+      const savedText = text;
+      broadcastInput.value = '';
+      startBroadcastSequence(savedText);
     });
     broadcastInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendBroadcastBtn.click(); });
 
