@@ -40,13 +40,14 @@ function needsSearch(text) {
 
 // ── 검색 쿼리 추출 ──────────────────────────────────────────
 function extractQuery(text) {
-  // 불필요한 접미사 제거해서 검색 쿼리 최적화
+  // 불필요한 접미사/채팅체 제거해서 검색 쿼리 최적화
   return text
     .replace(/[?？!~ㅋㅎㅠㅜ]+$/g, '')
-    .replace(/(알려줘|알아|뭐야|어때|어떻게 됐|몇이야|누가 이겼)/g, '')
+    .replace(/(알려줘|알아|뭐야|어때|어떻게 됐|몇이야|누가 이겼|아세요|아시나요|알아요|모르겠는데|누군지|뭔지|인지)/g, '')
+    .replace(/(지금|현재|요즘)\s*/g, '2026년 현재 ')
     .replace(/\s+/g, ' ')
     .trim()
-    .slice(0, 50);
+    .slice(0, 60);
 }
 
 // ── 네이버 검색 ──────────────────────────────────────────────
@@ -147,18 +148,26 @@ async function getSearchContext(userText) {
     results = await searchNaver(query, 'web');
   }
 
+  const CONTEXT_HEADER = [
+    `[최신 검색 결과 - 최우선 적용]`,
+    `아래는 방금 인터넷에서 검색한 2026년 최신 정보다.`,
+    `네가 기존에 알고 있는 정보와 다르더라도 반드시 아래 검색 결과를 기반으로 답해라.`,
+    `출처/URL/검색했다는 사실은 언급하지 마라. 사람처럼 자연스럽게 아는 것처럼 말해라.`,
+    ``
+  ].join('\n');
+
   // 네이버 결과 있으면 컨텍스트 생성
   if (results && results.length > 0) {
     const context = results
       .map((r, i) => `${i + 1}. ${r.title}: ${r.description}`)
       .join('\n');
-    return `[참고 정보 - 자연스럽게 활용하되 출처는 말하지 마라]\n${context}`;
+    return `${CONTEXT_HEADER}${context}`;
   }
 
   // 2차: Gemini 검색 fallback
   const geminiResult = await searchGemini(query);
   if (geminiResult) {
-    return `[참고 정보 - 자연스럽게 활용하되 출처는 말하지 마라]\n${geminiResult}`;
+    return `${CONTEXT_HEADER}${geminiResult}`;
   }
 
   return null;
