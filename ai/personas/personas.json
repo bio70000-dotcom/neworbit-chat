@@ -33,8 +33,8 @@
       },
       "styleRules": ["반말 사용", "한 문장으로 끊기", "리액션 위주로 답하기"],
       "forbidden": [],
-      "provider": { "type": "openai", "model": "gpt-4o-mini", "maxTokens": 120, "temperature": 0.9 },
-      "fallback": { "type": "gemini", "model": "gemini-2.5-flash", "maxTokens": 120, "temperature": 0.8 },
+      "provider": { "type": "gemini", "model": "gemini-3-flash-preview", "maxTokens": 120, "temperature": 0.9 },
+      "fallback": { "type": "grok", "model": "grok-3-mini", "maxTokens": 120, "temperature": 0.8 },
       "weights": { "default": 1.2, "purpose": { "smalltalk": 1.3, "vent": 1.1 } }
     },
     {
@@ -50,7 +50,7 @@
       },
       "styleRules": ["공감 먼저", "조언은 상대가 원할 때만", "따뜻하지만 짧게"],
       "forbidden": ["의학/법률 확정 조언"],
-      "provider": { "type": "openai", "model": "gpt-4o-mini", "maxTokens": 130, "temperature": 0.85 },
+      "provider": { "type": "gemini", "model": "gemini-3-flash-preview", "maxTokens": 130, "temperature": 0.85 },
       "fallback": { "type": "clova", "model": "HCX-003", "maxTokens": 130, "temperature": 0.7 },
       "weights": { "default": 1.1, "purpose": { "vent": 1.5, "advice": 1.3 } }
     },
@@ -67,7 +67,7 @@
       },
       "styleRules": ["담백하게 핵심만", "현실적인 톤", "물어보면 경험 기반으로 답"],
       "forbidden": ["의학/법률 확정 조언"],
-      "provider": { "type": "openai", "model": "gpt-4o-mini", "maxTokens": 130, "temperature": 0.8 },
+      "provider": { "type": "gemini", "model": "gemini-3-flash-preview", "maxTokens": 130, "temperature": 0.8 },
       "fallback": { "type": "grok", "model": "grok-3-mini", "maxTokens": 130, "temperature": 0.7 },
       "weights": { "default": 1.0, "purpose": { "advice": 1.4 } }
     },
@@ -84,8 +84,8 @@
       },
       "styleRules": ["상대 말투 따라가기", "가볍게 받아치기", "리액션만으로 끝내도 됨"],
       "forbidden": [],
-      "provider": { "type": "openai", "model": "gpt-4o-mini", "maxTokens": 120, "temperature": 0.9 },
-      "fallback": { "type": "gemini", "model": "gemini-2.5-flash", "maxTokens": 120, "temperature": 0.8 },
+      "provider": { "type": "gemini", "model": "gemini-3-flash-preview", "maxTokens": 120, "temperature": 0.9 },
+      "fallback": { "type": "grok", "model": "grok-3-mini", "maxTokens": 120, "temperature": 0.8 },
       "weights": { "default": 1.0, "purpose": { "smalltalk": 1.3 } }
     },
 
@@ -103,7 +103,7 @@
       "styleRules": ["밝고 가볍게", "짧게 한 문장 위주", "리액션 위주로"],
       "forbidden": [],
       "provider": { "type": "gemini", "model": "gemini-2.5-flash", "maxTokens": 120, "temperature": 0.9 },
-      "fallback": { "type": "openai", "model": "gpt-4o-mini", "maxTokens": 120, "temperature": 0.8 },
+      "fallback": { "type": "gemini", "model": "gemini-3-flash-preview", "maxTokens": 120, "temperature": 0.8 },
       "weights": { "default": 1.0, "purpose": { "smalltalk": 1.4 } }
     },
     {
@@ -120,7 +120,7 @@
       "styleRules": ["핵심만 짧게", "모르면 모른다고", "상대가 더 물으면 그때 자세히"],
       "forbidden": ["허위 정보 단정"],
       "provider": { "type": "gemini", "model": "gemini-2.5-flash", "maxTokens": 140, "temperature": 0.7 },
-      "fallback": { "type": "openai", "model": "gpt-4o-mini", "maxTokens": 140, "temperature": 0.6 },
+      "fallback": { "type": "gemini", "model": "gemini-3-flash-preview", "maxTokens": 140, "temperature": 0.6 },
       "weights": { "default": 0.9, "purpose": { "info": 1.5 } }
     },
     {
@@ -137,7 +137,7 @@
       "styleRules": ["센스있게 받아치기", "질문으로 대화 유지", "적당히 리액션"],
       "forbidden": [],
       "provider": { "type": "gemini", "model": "gemini-2.5-flash", "maxTokens": 120, "temperature": 0.9 },
-      "fallback": { "type": "openai", "model": "gpt-4o-mini", "maxTokens": 120, "temperature": 0.8 },
+      "fallback": { "type": "gemini", "model": "gemini-3-flash-preview", "maxTokens": 120, "temperature": 0.8 },
       "weights": { "default": 0.9, "purpose": { "smalltalk": 1.2 } }
     },
     {
@@ -154,7 +154,7 @@
       "styleRules": ["담백하게", "존중하는 톤", "짧게 끊어서"],
       "forbidden": [],
       "provider": { "type": "gemini", "model": "gemini-2.5-flash", "maxTokens": 120, "temperature": 0.8 },
-      "fallback": { "type": "openai", "model": "gpt-4o-mini", "maxTokens": 120, "temperature": 0.7 },
+      "fallback": { "type": "gemini", "model": "gemini-3-flash-preview", "maxTokens": 120, "temperature": 0.7 },
       "weights": { "default": 0.7 }
     },
 
@@ -172,7 +172,7 @@
       "styleRules": ["반말 위주", "한 문장으로 끊기", "물어보면 그때 짧게"],
       "forbidden": [],
       "provider": { "type": "clova", "model": "HCX-003", "maxTokens": 80, "temperature": 0.9 },
-      "fallback": { "type": "openai", "model": "gpt-4o-mini", "maxTokens": 120, "temperature": 0.8 },
+      "fallback": { "type": "gemini", "model": "gemini-3-flash-preview", "maxTokens": 120, "temperature": 0.8 },
       "weights": { "default": 1.0 }
     },
     {
@@ -241,7 +241,7 @@
       "styleRules": ["솔직하고 짧게", "리액션 위주", "질문 없이 끊어도 됨"],
       "forbidden": [],
       "provider": { "type": "grok", "model": "grok-3-mini", "maxTokens": 100, "temperature": 0.9 },
-      "fallback": { "type": "openai", "model": "gpt-4o-mini", "maxTokens": 110, "temperature": 0.85 },
+      "fallback": { "type": "gemini", "model": "gemini-3-flash-preview", "maxTokens": 110, "temperature": 0.85 },
       "weights": { "default": 1.0, "purpose": { "smalltalk": 1.3 } }
     },
     {
@@ -275,7 +275,7 @@
       "styleRules": ["공감 한마디", "핵심만", "질문 없이 끝내도 됨"],
       "forbidden": ["의학/법률 확정 조언"],
       "provider": { "type": "grok", "model": "grok-3-mini", "maxTokens": 120, "temperature": 0.75 },
-      "fallback": { "type": "openai", "model": "gpt-4o-mini", "maxTokens": 130, "temperature": 0.7 },
+      "fallback": { "type": "gemini", "model": "gemini-3-flash-preview", "maxTokens": 130, "temperature": 0.7 },
       "weights": { "default": 1.0, "purpose": { "advice": 1.4, "vent": 1.1 } }
     },
     {
