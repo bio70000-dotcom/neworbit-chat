@@ -52,7 +52,11 @@ function buildMessages({ systemPrompt, summary, turns, userText }) {
   return msgs;
 }
 
-async function ensurePersonaForRoom(roomId, socketId) {
+async function ensurePersonaForRoom(roomId, socketId, forcePersonaId) {
+  if (forcePersonaId) {
+    await memory.setRoomPersona(roomId, forcePersonaId);
+    return forcePersonaId;
+  }
   const existing = await memory.getRoomPersona(roomId);
   if (existing) return existing;
 
@@ -138,5 +142,9 @@ async function replyToUser({ roomId, socketId, userText, inputMaxChars = 2000 })
   return { text: finalText, personaId: persona.id, provider: usedProvider?.type, model: usedProvider?.model, fallback: usedFallback };
 }
 
-module.exports = { replyToUser, ensurePersonaForRoom };
+function getPersonaList() {
+  return personasConfig.personas || [];
+}
+
+module.exports = { replyToUser, ensurePersonaForRoom, getPersonaList };
 

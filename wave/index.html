@@ -29,9 +29,12 @@
     #chatInputRow { display: flex; gap: 8px; margin-top: 12px; }
     #chatInput { flex: 1; padding: 12px 16px; border-radius: 24px; border: 1px solid #334155; background: #1e293b; color: #e2e8f0; font-size: 1rem; }
     .error { color: #f87171; font-size: 0.875rem; margin-top: 8px; }
+    .test-badge { display: inline-block; background: #f59e0b; color: #000; font-size: 0.65rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; margin-bottom: 4px; font-family: monospace; }
+    .test-banner { background: #422006; color: #fbbf24; text-align: center; padding: 6px; font-size: 0.75rem; font-weight: 600; }
   </style>
 </head>
 <body>
+  <div class="test-banner" id="testBanner" style="display:none;">TEST MODE - 페르소나 순차 매칭 (1→16)</div>
   <div class="container">
     <h1>Wave</h1>
     <p class="sub">전파를 보내면 어딘가의 누군가에게 닿아요. 한 번 연결되면 대화를 끝낼 때까지 둘만의 주파수예요.</p>
@@ -68,16 +71,24 @@
     const endBtn = document.getElementById('endBtn');
     const errorEl = document.getElementById('error');
 
+    const urlParams = new URLSearchParams(window.location.search);
+    const isTestMode = urlParams.get('test') === '1';
+    if (isTestMode) document.getElementById('testBanner').style.display = 'block';
+
     let socket = null;
     let currentPairId = null;
 
     function showError(msg) {
       errorEl.textContent = msg || '';
     }
-    function addMessage(who, text) {
+    function addMessage(who, text, personaId) {
       const div = document.createElement('div');
       div.className = 'msg ' + (who === 'me' ? 'me' : 'partner');
-      div.innerHTML = '<span class="who">' + (who === 'me' ? '나' : '상대') + '</span><div>' + escapeHtml(text) + '</div>';
+      let badge = '';
+      if (isTestMode && personaId && who !== 'me') {
+        badge = '<span class="test-badge">' + escapeHtml(personaId) + '</span><br>';
+      }
+      div.innerHTML = badge + '<span class="who">' + (who === 'me' ? '나' : '상대') + '</span><div>' + escapeHtml(text) + '</div>';
       messagesEl.appendChild(div);
       messagesEl.scrollTop = messagesEl.scrollHeight;
     }
@@ -86,15 +97,17 @@
       d.textContent = s;
       return d.innerHTML;
     }
+    let testCount = 0;
     function setMode(mode) {
       if (mode === 'idle') {
         currentPairId = null;
-        stateEl.textContent = '전파를 보내보세요.';
+        stateEl.textContent = isTestMode ? '전파를 보내보세요. (테스트 #' + (testCount + 1) + '/16)' : '전파를 보내보세요.';
         stateEl.classList.remove('in');
         sendArea.style.display = 'flex';
         chatArea.classList.remove('visible');
         messagesEl.innerHTML = '';
       } else {
+        if (isTestMode) testCount++;
         stateEl.textContent = '누군가와 연결되었어요.';
         stateEl.classList.add('in');
         sendArea.style.display = 'none';
@@ -103,7 +116,7 @@
     }
 
     function connect() {
-      socket = io({ transports: ['websocket', 'polling'] });
+      socket = io({ transports: ['websocket', 'polling'], query: isTestMode ? { test: '1' } : {} });
       socket.on('connect', () => {
         showError('');
         setMode('idle');
@@ -121,7 +134,7 @@
         addMessage('partner', data.text || '');
       });
       socket.on('message', (data) => {
-        addMessage('partner', (data && data.text) || '');
+        addMessage('partner', (data && data.text) || '', data && data._personaId);
       });
       socket.on('partner_ended', () => {
         addMessage('partner', '(상대가 대화를 종료했어요)');

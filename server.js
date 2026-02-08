@@ -3,7 +3,7 @@ const express = require('express');
 const http = require('http');
 const { Server } = require("socket.io");
 const { createClient } = require("redis");
-const { replyToUser, ensurePersonaForRoom } = require('./ai/orchestrator');
+const { replyToUser, ensurePersonaForRoom, getPersonaList } = require('./ai/orchestrator');
 const sessionMemory = require('./ai/memory/sessionMemory');
 const client = require('prom-client');
 
@@ -112,6 +112,9 @@ io.on('connection', (socket) => {
 
     if (isWave) {
         // ========== 전파(wave) 플로우 ==========
+        const isTestMode = socket.handshake.query.test === '1';
+        let testPersonaIndex = 0;
+
         waveRedis.addReceiver(redisClient, socket.id).catch(console.error);
 
         socket.on('disconnect', async () => {
@@ -131,13 +134,25 @@ io.on('connection', (socket) => {
             const text = (data?.text || '').toString().trim().slice(0, 2000);
             if (!text) return socket.emit('broadcast_error', { message: '메시지를 입력해주세요.' });
             await waveRedis.removeReceiver(redisClient, socket.id);
-            let receiver = await waveRedis.getRandomReceiver(redisClient, socket.id);
+
+            // 테스트 모드: 항상 AI 매칭 + 순차 페르소나
+            let receiver;
+            let forcePersonaId = null;
+            if (isTestMode) {
+                receiver = 'ai';
+                const personas = getPersonaList();
+                forcePersonaId = personas[testPersonaIndex % personas.length]?.id || null;
+                testPersonaIndex++;
+            } else {
+                receiver = await waveRedis.getRandomReceiver(redisClient, socket.id);
+                if (!receiver) receiver = 'ai';
+            }
+
             const pairId = 'pair_' + Date.now() + '_' + socket.id;
-            if (!receiver) receiver = 'ai';
             if (receiver === 'ai') {
                 await waveRedis.createPair(redisClient, pairId, socket.id, 'ai');
                 socket.emit('broadcast_delivered', { pairId });
-                await ensurePersonaForRoom(pairId, socket.id);
+                await ensurePersonaForRoom(pairId, socket.id, forcePersonaId);
                 const end = aiReplyLatencyMs.startTimer();
                 const { text: aiText, personaId, provider, fallback } = await replyToUser({
                     roomId: pairId,
@@ -146,7 +161,7 @@ io.on('connection', (socket) => {
                 }).catch(() => ({ text: '잠시 뒤에 다시 보내줘 ㅠ', personaId: 'na', provider: 'na', fallback: false }));
                 end({ provider: provider || 'na', fallback: String(!!fallback) });
                 aiRepliesTotal.inc({ persona: personaId || 'na', provider: provider || 'na', fallback: String(!!fallback) });
-                socket.emit('message', { sender: 'partner', text: aiText });
+                socket.emit('message', { sender: 'partner', text: aiText, ...(isTestMode ? { _personaId: personaId } : {}) });
             } else {
                 await waveRedis.removeReceiver(redisClient, receiver);
                 await waveRedis.createPair(redisClient, pairId, socket.id, receiver);
@@ -173,7 +188,7 @@ io.on('connection', (socket) => {
                 }).catch(() => ({ text: '잠시 뒤에 다시 보내줘 ㅠ', personaId: 'na', provider: 'na', fallback: false }));
                 end({ provider: provider || 'na', fallback: String(!!fallback) });
                 aiRepliesTotal.inc({ persona: personaId || 'na', provider: provider || 'na', fallback: String(!!fallback) });
-                socket.emit('message', { sender: 'partner', text: aiText });
+                socket.emit('message', { sender: 'partner', text: aiText, ...(isTestMode ? { _personaId: personaId } : {}) });
             } else {
                 io.to(other).emit('message', { sender: 'partner', text: msg });
             }
