@@ -17,7 +17,7 @@ async function generateReply(provider, params) {
 
   if (provider.type === 'openai') return await generateOpenAI(base);
   if (provider.type === 'clova') return await generateClova(base);
-  if (provider.type === 'gemini') return await generateGemini(base);
+  if (provider.type === 'gemini') return await generateGemini({ ...base, searchEnabled: !!provider.searchEnabled });
   if (provider.type === 'grok') return await generateGrok(base);
   throw new Error(`Unknown provider type: ${provider.type}`);
 }

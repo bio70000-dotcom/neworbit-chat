@@ -28,7 +28,7 @@ function convertMessagesToGemini(messages) {
   return { systemInstruction, contents };
 }
 
-async function generateGemini({ model, messages, maxTokens, temperature, timeoutMs }) {
+async function generateGemini({ model, messages, maxTokens, temperature, timeoutMs, searchEnabled }) {
   const apiKey = getGeminiApiKey();
   const url = `${GEMINI_BASE_URL}/models/${encodeURIComponent(model)}:generateContent?key=${apiKey}`;
   const controller = new AbortController();
@@ -44,6 +44,11 @@ async function generateGemini({ model, messages, maxTokens, temperature, timeout
       topP: 0.8
     }
   };
+
+  // Google Search 그라운딩: 실시간 검색으로 최신 정보 제공
+  if (searchEnabled) {
+    body.tools = [{ google_search: {} }];
+  }
 
   if (systemInstruction) {
     body.systemInstruction = {
