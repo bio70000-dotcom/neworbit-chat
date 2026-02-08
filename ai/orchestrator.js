@@ -176,9 +176,15 @@ async function replyToUser({ roomId, socketId, userText, inputMaxChars = 2000 })
   try {
     text = await generateReply(persona.provider, { messages, timeoutMs });
   } catch (e) {
+    console.error(`[AI] Primary failed (${persona.provider?.type}/${persona.provider?.model}): ${e.message}`);
     usedFallback = true;
     usedProvider = persona.fallback;
-    text = await generateReply(persona.fallback, { messages, timeoutMs: 4500 }).catch(() => '');
+    try {
+      text = await generateReply(persona.fallback, { messages, timeoutMs: timeoutMs });
+    } catch (e2) {
+      console.error(`[AI] Fallback failed (${persona.fallback?.type}/${persona.fallback?.model}): ${e2.message}`);
+      text = '';
+    }
   }
 
   const rawText = (text || '').trim();
