@@ -3,6 +3,7 @@ const { generateReply } = require('./providers');
 const { scrubPII } = require('./anonymize/piiScrubber');
 const memory = require('./memory/sessionMemory');
 const personasConfig = require('./personas/personas.json');
+const { getSearchContext } = require('./search/webSearch');
 
 /**
  * 잘린 문장 후처리: 모델이 문장을 완성하지 않고 끊은 경우 정리
@@ -92,10 +93,13 @@ function buildSystemPrompt(persona, profile = {}) {
     .join('\n');
 }
 
-function buildMessages({ systemPrompt, summary, turns, userText }) {
+function buildMessages({ systemPrompt, summary, turns, userText, searchContext }) {
   const msgs = [{ role: 'system', content: systemPrompt }];
   if (summary) {
     msgs.push({ role: 'system', content: `대화 요약(익명화됨): ${summary}` });
+  }
+  if (searchContext) {
+    msgs.push({ role: 'system', content: searchContext });
   }
   for (const t of turns || []) {
     if (!t?.role || !t?.content) continue;
@@ -167,8 +171,17 @@ async function replyToUser({ roomId, socketId, userText, inputMaxChars = 2000 })
   const summary = await memory.getSummary(roomId);
   const turns = await memory.getTurns(roomId);
 
+  // 검색 컨텍스트 (시사/뉴스 질문 시 네이버 검색 → Gemini 검색 fallback)
+  let searchContext = null;
+  try {
+    searchContext = await getSearchContext(cleanUserText);
+    if (searchContext) console.log(`[Search] Context injected for: "${cleanUserText.slice(0, 30)}..."`);
+  } catch (e) {
+    console.warn(`[Search] Error: ${e.message}`);
+  }
+
   const timeoutMs = persona?.provider?.timeoutMs || personasConfig.defaults.timeoutMs || 4500;
-  const messages = buildMessages({ systemPrompt, summary, turns, userText: cleanUserText });
+  const messages = buildMessages({ systemPrompt, summary, turns, userText: cleanUserText, searchContext });
 
   let usedProvider = persona.provider;
   let usedFallback = false;

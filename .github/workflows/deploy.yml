@@ -34,6 +34,8 @@ jobs:
             echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" >> .env
             echo "CLOVA_API_KEY=${{ secrets.CLOVA_API_KEY }}" >> .env
             echo "GROK_API_KEY=${{ secrets.GROK_API_KEY }}" >> .env
+            echo "NAVER_CLIENT_ID=${{ secrets.NAVER_CLIENT_ID }}" >> .env
+            echo "NAVER_CLIENT_SECRET=${{ secrets.NAVER_CLIENT_SECRET }}" >> .env
             # 도커 재시작
             sudo docker-compose down
             sudo docker-compose up -d --build
