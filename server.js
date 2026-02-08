@@ -62,6 +62,12 @@ redisClient.connect().catch(console.error);
 const WAITING_QUEUE = 'waiting_queue';
 const waveRedis = require('./lib/waveRedis');
 
+// 사람처럼 보이기 위한 타이핑 딜레이 (2~5초 랜덤)
+function humanDelay() {
+  const ms = 2000 + Math.floor(Math.random() * 3000);
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 // ============ HTTP: wave.neworbit.co.kr 이면 전파 앱 정적 서빙 ============
 app.use((req, res, next) => {
   const host = (req.get('host') || '').toLowerCase();
@@ -153,15 +159,21 @@ io.on('connection', (socket) => {
                 await waveRedis.createPair(redisClient, pairId, socket.id, 'ai');
                 socket.emit('broadcast_delivered', { pairId });
                 await ensurePersonaForRoom(pairId, socket.id, forcePersonaId);
-                const end = aiReplyLatencyMs.startTimer();
-                const { text: aiText, personaId, provider, fallback } = await replyToUser({
-                    roomId: pairId,
-                    socketId: socket.id,
-                    userText: text
-                }).catch(() => ({ text: '잠시 뒤에 다시 보내줘 ㅠ', personaId: 'na', provider: 'na', fallback: false }));
-                end({ provider: provider || 'na', fallback: String(!!fallback) });
-                aiRepliesTotal.inc({ persona: personaId || 'na', provider: provider || 'na', fallback: String(!!fallback) });
-                socket.emit('message', { sender: 'partner', text: aiText, ...(isTestMode ? { _personaId: personaId } : {}) });
+                const [delayDone, aiResult] = await Promise.all([
+                    humanDelay(),
+                    (async () => {
+                        const end = aiReplyLatencyMs.startTimer();
+                        const result = await replyToUser({
+                            roomId: pairId,
+                            socketId: socket.id,
+                            userText: text
+                        }).catch(() => ({ text: '잠시 뒤에 다시 보내줘 ㅠ', personaId: 'na', provider: 'na', fallback: false }));
+                        end({ provider: result.provider || 'na', fallback: String(!!result.fallback) });
+                        aiRepliesTotal.inc({ persona: result.personaId || 'na', provider: result.provider || 'na', fallback: String(!!result.fallback) });
+                        return result;
+                    })()
+                ]);
+                socket.emit('message', { sender: 'partner', text: aiResult.text, ...(isTestMode ? { _personaId: aiResult.personaId } : {}) });
             } else {
                 await waveRedis.removeReceiver(redisClient, receiver);
                 await waveRedis.createPair(redisClient, pairId, socket.id, receiver);
@@ -180,15 +192,21 @@ io.on('connection', (socket) => {
             const other = waveRedis.otherInPair(pair, socket.id);
             if (!other) return;
             if (other === 'ai') {
-                const end = aiReplyLatencyMs.startTimer();
-                const { text: aiText, personaId, provider, fallback } = await replyToUser({
-                    roomId: pairId,
-                    socketId: socket.id,
-                    userText: msg
-                }).catch(() => ({ text: '잠시 뒤에 다시 보내줘 ㅠ', personaId: 'na', provider: 'na', fallback: false }));
-                end({ provider: provider || 'na', fallback: String(!!fallback) });
-                aiRepliesTotal.inc({ persona: personaId || 'na', provider: provider || 'na', fallback: String(!!fallback) });
-                socket.emit('message', { sender: 'partner', text: aiText, ...(isTestMode ? { _personaId: personaId } : {}) });
+                const [, aiResult] = await Promise.all([
+                    humanDelay(),
+                    (async () => {
+                        const end = aiReplyLatencyMs.startTimer();
+                        const result = await replyToUser({
+                            roomId: pairId,
+                            socketId: socket.id,
+                            userText: msg
+                        }).catch(() => ({ text: '잠시 뒤에 다시 보내줘 ㅠ', personaId: 'na', provider: 'na', fallback: false }));
+                        end({ provider: result.provider || 'na', fallback: String(!!result.fallback) });
+                        aiRepliesTotal.inc({ persona: result.personaId || 'na', provider: result.provider || 'na', fallback: String(!!result.fallback) });
+                        return result;
+                    })()
+                ]);
+                socket.emit('message', { sender: 'partner', text: aiResult.text, ...(isTestMode ? { _personaId: aiResult.personaId } : {}) });
             } else {
                 io.to(other).emit('message', { sender: 'partner', text: msg });
             }
