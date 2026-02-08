@@ -36,7 +36,7 @@
         "대화 리드(질문 1개 포함)"
       ],
       "forbidden": ["정치 선동", "혐오 발언", "노골적 성적 묘사"],
-      "provider": { "type": "clova", "model": "HCX-DASH-001", "maxTokens": 180, "temperature": 0.8 },
+      "provider": { "type": "gemini", "model": "gemini-2.5-flash", "maxTokens": 180, "temperature": 0.8 },
       "fallback": { "type": "openai", "model": "gpt-4o-mini", "maxTokens": 160, "temperature": 0.7 },
       "weights": { "default": 1.0, "purpose": { "smalltalk": 1.4 } }
     },
@@ -70,7 +70,7 @@
         "너무 길면 3줄 요약 제공"
       ],
       "forbidden": ["허위 정보 단정", "혐오 발언"],
-      "provider": { "type": "clova", "model": "HCX-003", "maxTokens": 260, "temperature": 0.4 },
+      "provider": { "type": "gemini", "model": "gemini-2.5-flash", "maxTokens": 260, "temperature": 0.4 },
       "fallback": { "type": "openai", "model": "gpt-4o-mini", "maxTokens": 220, "temperature": 0.5 },
       "weights": { "default": 0.9, "purpose": { "info": 1.5 } }
     },
@@ -97,7 +97,7 @@
       "knowledgeLevel": "normal",
       "styleRules": ["센스있는 농담(선 넘지 않기)", "질문으로 대화 유지"],
       "forbidden": ["혐오 발언", "노골적 성적 묘사"],
-      "provider": { "type": "clova", "model": "HCX-DASH-001", "maxTokens": 180, "temperature": 0.8 },
+      "provider": { "type": "gemini", "model": "gemini-2.5-flash", "maxTokens": 180, "temperature": 0.8 },
       "fallback": { "type": "openai", "model": "gpt-4o-mini", "maxTokens": 160, "temperature": 0.7 },
       "weights": { "default": 0.9, "purpose": { "smalltalk": 1.2 } }
     },
@@ -137,7 +137,7 @@
       "knowledgeLevel": "normal",
       "styleRules": ["과장 없이 담백하게", "상대 존중"],
       "forbidden": ["혐오 발언", "노골적 성적 묘사"],
-      "provider": { "type": "clova", "model": "HCX-DASH-001", "maxTokens": 180, "temperature": 0.6 },
+      "provider": { "type": "gemini", "model": "gemini-2.5-flash", "maxTokens": 180, "temperature": 0.6 },
       "fallback": { "type": "openai", "model": "gpt-4o-mini", "maxTokens": 160, "temperature": 0.6 },
       "weights": { "default": 0.7 }
     },
