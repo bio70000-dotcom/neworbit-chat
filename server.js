@@ -141,14 +141,15 @@ io.on('connection', (socket) => {
             if (!text) return socket.emit('broadcast_error', { message: '메시지를 입력해주세요.' });
             await waveRedis.removeReceiver(redisClient, socket.id);
 
-            // 테스트 모드: 항상 AI 매칭 + 순차 페르소나
+            // 테스트 모드: 항상 AI 매칭 + 클라이언트가 선택한 페르소나
             let receiver;
             let forcePersonaId = null;
             if (isTestMode) {
                 receiver = 'ai';
                 const personas = getPersonaList();
-                forcePersonaId = personas[testPersonaIndex % personas.length]?.id || null;
-                testPersonaIndex++;
+                const idx = typeof data?.personaIndex === 'number' ? data.personaIndex : testPersonaIndex;
+                forcePersonaId = personas[idx % personas.length]?.id || null;
+                testPersonaIndex = idx + 1;
             } else {
                 receiver = await waveRedis.getRandomReceiver(redisClient, socket.id);
                 if (!receiver) receiver = 'ai';

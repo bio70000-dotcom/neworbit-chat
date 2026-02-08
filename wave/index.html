@@ -23,7 +23,7 @@
     .btn.primary { background: linear-gradient(135deg, #6366f1, #a855f7); color: white; }
     .btn.secondary { background: #334155; color: #94a3b8; }
     .btn.danger { background: #7f1d1d; color: #fca5a5; }
-    #messages { flex: 1; overflow-y: auto; min-height: 200px; padding: 8px 0; }
+    #messages { flex: 1; overflow-y: auto; min-height: 200px; max-height: calc(100vh - 260px); padding: 8px 0; scroll-behavior: smooth; }
     .msg { margin-bottom: 12px; padding: 10px 14px; border-radius: 16px; max-width: 85%; animation: msgIn 0.3s ease; }
     .msg.me { margin-left: auto; background: #4338ca; color: white; border-bottom-right-radius: 4px; }
     .msg.partner { background: #1e293b; border: 1px solid #334155; border-bottom-left-radius: 4px; }
@@ -36,6 +36,16 @@
     .error { color: #f87171; font-size: 0.875rem; margin-top: 8px; }
     .test-badge { display: inline-block; background: #f59e0b; color: #000; font-size: 0.65rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; margin-bottom: 4px; font-family: monospace; }
     .test-banner { background: #422006; color: #fbbf24; text-align: center; padding: 6px; font-size: 0.75rem; font-weight: 600; }
+
+    /* 테스트 모드 페르소나 선택 */
+    .test-select-area { display: none; margin-bottom: 12px; }
+    .test-select-area.visible { display: block; }
+    .test-select-area label { font-size: 0.8rem; color: #94a3b8; margin-bottom: 4px; display: block; }
+    .test-select-area select {
+      width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid #334155;
+      background: #1e293b; color: #e2e8f0; font-size: 0.875rem; outline: none; cursor: pointer;
+    }
+    .test-select-area select:focus { border-color: #f59e0b; }
 
     /* 전파 송신 애니메이션 */
     .wave-anim { display: none; text-align: center; padding: 40px 0; }
@@ -77,12 +87,35 @@
   </style>
 </head>
 <body>
-  <div class="test-banner" id="testBanner" style="display:none;">TEST MODE - 페르소나 순차 매칭 (1→16)</div>
+  <div class="test-banner" id="testBanner" style="display:none;">TEST MODE - 페르소나 선택 테스트</div>
   <div class="container">
     <h1>Wave</h1>
     <p class="sub">전파를 보내면 어딘가의 누군가에게 닿아요. 한 번 연결되면 대화를 끝낼 때까지 둘만의 주파수예요.</p>
 
     <div class="state" id="state">전파를 보내보세요.</div>
+
+    <!-- 테스트 모드: 페르소나 선택 -->
+    <div class="test-select-area" id="testSelectArea">
+      <label>페르소나 선택</label>
+      <select id="personaSelect">
+        <option value="0">#1 이준혁 (Gemini3Flash / 20대남 / 친구)</option>
+        <option value="1">#2 김서연 (Gemini3Flash / 20대여 / 상담)</option>
+        <option value="2">#3 박도현 (Gemini3Flash / 30대남 / 상담)</option>
+        <option value="3">#4 하늘 (Gemini3Flash / 중립 / 친구)</option>
+        <option value="4">#5 최유진 (Gemini2.5Flash / 20대여 / 친구)</option>
+        <option value="5">#6 정민수 (Gemini2.5Flash / 20대남 / 정보)</option>
+        <option value="6">#7 한소희 (Gemini2.5Flash / 30대여 / 친구)</option>
+        <option value="7">#8 이상원 (Gemini2.5Flash / 40대남 / 친구)</option>
+        <option value="8">#9 윤지현 (CLOVA / 30대여 / 친구)</option>
+        <option value="9">#10 강태우 (CLOVA / 30대남 / 정보)</option>
+        <option value="10">#11 박미영 (CLOVA / 40대여 / 상담)</option>
+        <option value="11">#12 조영진 (CLOVA / 40대남 / 정보)</option>
+        <option value="12">#13 신동현 (Grok / 20대남 / 친구)</option>
+        <option value="13">#14 오수빈 (Grok / 30대여 / 친구)</option>
+        <option value="14">#15 임재원 (Grok / 30대남 / 상담)</option>
+        <option value="15">#16 김은숙 (Grok / 40대여 / 상담)</option>
+      </select>
+    </div>
 
     <div id="sendArea">
       <input type="text" id="broadcastInput" placeholder="메시지를 입력하고 전파를 보내요" maxlength="2000" />
@@ -126,10 +159,15 @@
     const errorEl = document.getElementById('error');
     const waveAnim = document.getElementById('waveAnim');
     const waveText = document.getElementById('waveText');
+    const testSelectArea = document.getElementById('testSelectArea');
+    const personaSelect = document.getElementById('personaSelect');
 
     const urlParams = new URLSearchParams(window.location.search);
     const isTestMode = urlParams.get('test') === '1';
-    if (isTestMode) document.getElementById('testBanner').style.display = 'block';
+    if (isTestMode) {
+      document.getElementById('testBanner').style.display = 'block';
+      testSelectArea.classList.add('visible');
+    }
 
     let socket = null;
     let currentPairId = null;
@@ -138,6 +176,11 @@
 
     function showError(msg) {
       errorEl.textContent = msg || '';
+    }
+    function scrollToBottom() {
+      requestAnimationFrame(() => {
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+      });
     }
     function addMessage(who, text, personaId) {
       const div = document.createElement('div');
@@ -148,7 +191,7 @@
       }
       div.innerHTML = badge + '<span class="who">' + (who === 'me' ? '나' : '상대') + '</span><div>' + escapeHtml(text) + '</div>';
       messagesEl.appendChild(div);
-      messagesEl.scrollTop = messagesEl.scrollHeight;
+      scrollToBottom();
     }
     function escapeHtml(s) {
       const d = document.createElement('div');
@@ -156,64 +199,60 @@
       return d.innerHTML;
     }
 
-    let testCount = 0;
     function setMode(mode) {
       if (mode === 'idle') {
         currentPairId = null;
         waitingForFirstReply = false;
-        stateEl.textContent = isTestMode ? '전파를 보내보세요. (테스트 #' + (testCount + 1) + '/16)' : '전파를 보내보세요.';
+        stateEl.textContent = '전파를 보내보세요.';
         stateEl.classList.remove('in', 'sending');
         sendArea.style.display = 'flex';
+        if (isTestMode) testSelectArea.classList.add('visible');
         waveAnim.classList.remove('visible');
         chatArea.classList.remove('visible');
         messagesEl.innerHTML = '';
         sendBroadcastBtn.disabled = false;
       } else if (mode === 'sending') {
-        // 전파 보내는 중 연출
         stateEl.textContent = '전파를 보내는 중...';
         stateEl.classList.add('sending');
         stateEl.classList.remove('in');
         sendArea.style.display = 'none';
+        testSelectArea.classList.remove('visible');
         waveAnim.classList.add('visible');
         waveText.textContent = '전파를 보내는 중...';
         waveText.classList.remove('found');
         chatArea.classList.remove('visible');
       } else if (mode === 'searching') {
-        // 주파수 탐색 중 연출
         stateEl.textContent = '주파수를 탐색하고 있어요...';
         waveText.textContent = '주파수를 탐색하고 있어요...';
       } else if (mode === 'found') {
-        // 응답 도착 연출
         stateEl.textContent = '응답이 도착했어요!';
         stateEl.classList.remove('sending');
         stateEl.classList.add('in');
         waveText.textContent = '응답이 도착했어요!';
         waveText.classList.add('found');
       } else if (mode === 'in') {
-        if (isTestMode) testCount++;
         stateEl.textContent = '누군가와 연결되었어요.';
         stateEl.classList.remove('sending');
         stateEl.classList.add('in');
         sendArea.style.display = 'none';
+        testSelectArea.classList.remove('visible');
         waveAnim.classList.remove('visible');
         chatArea.classList.add('visible');
         chatInput.focus();
       }
     }
 
-    // 전파 송신 시퀀스
     function startBroadcastSequence(text) {
       pendingBroadcastText = text;
       sendBroadcastBtn.disabled = true;
       setMode('sending');
 
-      // 1단계: "전파를 보내는 중..." (1.2초)
       setTimeout(() => {
         setMode('searching');
-
-        // 2단계: "주파수를 탐색하고 있어요..." (1.3초 후 실제 전송)
         setTimeout(() => {
-          socket.emit('send_broadcast', { text: pendingBroadcastText });
+          const payload = { text: pendingBroadcastText };
+          if (isTestMode) payload.personaIndex = parseInt(personaSelect.value, 10);
+          socket.emit('send_broadcast', payload);
           waitingForFirstReply = true;
         }, 1300);
       }, 1200);
@@ -229,7 +268,6 @@
 
       socket.on('broadcast_delivered', (data) => {
         currentPairId = data.pairId;
-        // 아직 애니메이션 화면에 머물러 있음 - 첫 응답을 기다림
       });
 
       socket.on('broadcast_received', (data) => {
@@ -246,7 +284,6 @@
         const pid = data && data._personaId;
 
         if (waitingForFirstReply) {
-          // 첫 응답 도착 → "응답이 도착했어요!" 연출
           waitingForFirstReply = false;
           setMode('found');
           setTimeout(() => {
