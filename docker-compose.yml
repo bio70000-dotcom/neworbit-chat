@@ -10,6 +10,8 @@ services:
       - REDIS_HOST=redis
       - MONGO_URL=mongodb://mongo:27017/chat
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - CLOVA_API_KEY=${CLOVA_API_KEY}
     ports:
       - "3000:3000"
     depends_on:
