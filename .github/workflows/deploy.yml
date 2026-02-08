@@ -40,3 +40,5 @@ jobs:
             sudo docker-compose down
             sudo docker-compose up -d --build
             sudo docker system prune -f # 청소까지 깔끔하게
+            # 매일 새벽 4시(KST) 앱 컨테이너 재시작 크론 설정
+            (crontab -l 2>/dev/null | grep -v 'daily-restart' ; echo '0 19 * * * cd /home/ubuntu/chat-app && sudo docker-compose restart app >> /tmp/daily-restart.log 2>&1 # daily-restart') | crontab -
