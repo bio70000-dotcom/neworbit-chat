@@ -34,7 +34,7 @@
 <body>
   <div class="container">
     <h1>Wave</h1>
-    <p class="sub">전파를 보내면 누군가, 혹은 AI가 답해요. 한 번 연결되면 대화를 끝낼 때까지 둘만 주고받아요.</p>
+    <p class="sub">전파를 보내면 어딘가의 누군가에게 닿아요. 한 번 연결되면 대화를 끝낼 때까지 둘만의 주파수예요.</p>
 
     <div class="state" id="state">전파를 보내보세요.</div>
 
@@ -95,7 +95,7 @@
         chatArea.classList.remove('visible');
         messagesEl.innerHTML = '';
       } else {
-        stateEl.textContent = '대화 중이에요. 종료하려면 "대화 종료"를 누르세요.';
+        stateEl.textContent = '누군가와 연결되었어요.';
         stateEl.classList.add('in');
         sendArea.style.display = 'none';
         chatArea.classList.add('visible');
@@ -114,7 +114,6 @@
         setMode('in');
         addMessage('me', broadcastInput.value.trim());
         broadcastInput.value = '';
-        if (data.to === 'ai') stateEl.textContent = 'AI와 대화 중.';
       });
       socket.on('broadcast_received', (data) => {
         currentPairId = data.pairId;

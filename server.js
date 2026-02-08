@@ -136,7 +136,7 @@ io.on('connection', (socket) => {
             if (!receiver) receiver = 'ai';
             if (receiver === 'ai') {
                 await waveRedis.createPair(redisClient, pairId, socket.id, 'ai');
-                socket.emit('broadcast_delivered', { pairId, to: 'ai' });
+                socket.emit('broadcast_delivered', { pairId });
                 await ensurePersonaForRoom(pairId, socket.id);
                 const end = aiReplyLatencyMs.startTimer();
                 const { text: aiText, personaId, provider, fallback } = await replyToUser({
@@ -150,8 +150,8 @@ io.on('connection', (socket) => {
             } else {
                 await waveRedis.removeReceiver(redisClient, receiver);
                 await waveRedis.createPair(redisClient, pairId, socket.id, receiver);
-                io.to(receiver).emit('broadcast_received', { pairId, text, from: 'human' });
-                socket.emit('broadcast_delivered', { pairId, to: 'human' });
+                io.to(receiver).emit('broadcast_received', { pairId, text });
+                socket.emit('broadcast_delivered', { pairId });
             }
             messagesTotal.inc();
         });

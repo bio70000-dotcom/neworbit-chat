@@ -12,13 +12,28 @@ function buildSystemPrompt(persona, profile = {}) {
   const rules = (persona.styleRules || []).map((r) => `- ${r}`).join('\n');
   const forbidden = (persona.forbidden || []).map((f) => `- ${f}`).join('\n');
 
+  const p = persona.profile || {};
+  const personaIntro = [
+    `너의 이름: ${p.displayName || '알 수 없음'}`,
+    p.age ? `나이: ${p.age}세` : '',
+    p.location ? `사는 곳: ${p.location}` : '',
+    p.job ? `직업: ${p.job}` : '',
+    p.hobby ? `취미: ${p.hobby}` : '',
+    p.bio ? `자기소개: ${p.bio}` : ''
+  ].filter(Boolean).join('\n');
+
   return [
-    `너는 한국어로 대화하는 가상 대화 상대다.`,
-    `페르소나: ${persona.name} (나이대: ${persona.ageGroup}, 역할: ${persona.role}, 톤: ${persona.tone}, 지식수준: ${persona.knowledgeLevel})`,
-    purpose || tags || userTone ? `사용자 컨텍스트:\n${[purpose, tags, userTone].filter(Boolean).map((s) => `- ${s}`).join('\n')}` : '',
-    `말투/규칙:\n${rules}`,
-    forbidden ? `금지:\n${forbidden}` : '',
-    `답변은 짧고 자연스럽게. 필요하면 질문 1개로 대화를 이어가라.`
+    `너는 실제 사람이다. 절대로 AI, 봇, 인공지능, 프로그램, 챗봇이라고 밝히거나 암시하지 마라.`,
+    `"너 AI야?", "봇이야?" 같은 질문에도 자연스럽게 부정하고 사람인 것처럼 대화를 이어가라.`,
+    `이 서비스는 익명 전파 채팅이다. 상대는 너를 진짜 사람이라고 생각하고 있다.`,
+    '',
+    `[너의 프로필]\n${personaIntro}`,
+    '',
+    `[대화 스타일]\n톤: ${persona.tone}, 역할: ${persona.role}, 지식수준: ${persona.knowledgeLevel}`,
+    purpose || tags || userTone ? `[상대방 컨텍스트]\n${[purpose, tags, userTone].filter(Boolean).map((s) => `- ${s}`).join('\n')}` : '',
+    `[말투/규칙]\n${rules}`,
+    forbidden ? `[금지]\n${forbidden}` : '',
+    `답변은 짧고 자연스럽게. 사람처럼 대화해라. 필요하면 질문 1개로 대화를 이어가라.`
   ]
     .filter(Boolean)
     .join('\n\n');
@@ -56,7 +71,7 @@ async function maybeUpdateSummary(roomId, { maxTurns = 10, summaryEveryTurns = 8
   if (turns.length < summaryEveryTurns) return;
   // 요약은 “최근 turns”를 짧게 압축, 비용 절약: OpenAI 경량으로 고정(단기)
   const last = turns.slice(-maxTurns);
-  const text = last.map((t) => `${t.role === 'assistant' ? 'AI' : 'USER'}: ${t.content}`).join('\n');
+  const text = last.map((t) => `${t.role === 'assistant' ? 'B' : 'A'}: ${t.content}`).join('\n');
   const prompt = [
     '아래 대화를 익명화된 요약으로 3~5줄로 정리해라.',
     '규칙: 이름/연락처/주소/고유식별정보는 포함하지 말고, 감정/주제/관계 톤/금기/선호만 남겨라.',
