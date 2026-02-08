@@ -1,0 +1,43 @@
+# Project Context: New Orbit (뉴 오빗)
+
+## 1. 프로젝트 개요
+- **서비스명:** New Orbit (새로운 연결의 궤도)
+- **도메인:** - 플랫폼 대문: `https://neworbit.co.kr` (정적 랜딩 페이지)
+  - 채팅 서버: `https://chat.neworbit.co.kr` (실시간 채팅 앱)
+- **핵심 가치:** 채팅(Chat), 카풀(Drive), 여행(Trip)을 잇는 종합 연결 플랫폼.
+- **현재 단계:** 1:1 랜덤 채팅 서비스 MVP 개발 및 안정화 단계.
+
+## 2. 기술 스택 (Tech Stack)
+- **Infra:** AWS Lightsail (Ubuntu), Docker, Docker Compose
+- **Web Server:** Nginx (리버스 프록시, 도메인 라우팅, SSL 처리)
+- **Backend:** Node.js (Express), Socket.io (WebSocket)
+- **Database:** - Redis: 실시간 대기열(Queue) 관리, Pub/Sub
+  - MongoDB: 채팅 로그 및 사용자 데이터 저장
+- **AI:** OpenAI API (GPT-4o-mini) - 매칭 실패 시 페르소나 봇 투입
+
+## 3. 핵심 로직 (Core Logic)
+### A. 랜덤 매칭 시스템
+1. 사용자가 '입장' 버튼 클릭 -> 소켓 연결 (`join_queue` 이벤트).
+2. **Redis List**(`waiting_queue`)에 사용자 Socket ID 적재.
+3. 대기열에 2명 이상 모이면 즉시 매칭 (`rPop`으로 상대방 꺼냄).
+4. `room_{ID1}_{ID2}` 형식의 고유 방 생성 후 두 사용자 입장.
+
+### B. AI 하이브리드 폴백 (Fallback)
+1. 대기열 진입 후 **15초** 동안 매칭이 안 되면 타이머 발동.
+2. 시스템이 자동으로 'AI 봇'을 생성하여 매칭 성사 (`match_success` 이벤트).
+3. **AI 페르소나:** 20대 초반 한국인 대학생. ("ㅋㅋ", "ㅎㅎ" 사용, 단답형, 친근한 말투).
+4. 사용자는 상대방이 AI인지 모르게 자연스럽게 대화 유도.
+5. 비용 절감을 위해 최근 대화 10건(Context)만 기억.
+
+## 4. 폴더 구조 (File Structure)
+```text
+/
+├── landing/             # 대문 페이지 (neworbit.co.kr)
+│   └── index.html
+├── .github/workflows/   # 자동 배포 스크립트 (deploy.yml)
+├── aiHandler.js         # OpenAI API 연동 모듈
+├── server.js            # 메인 서버 (Socket.io 로직)
+├── docker-compose.yml   # 컨테이너 오케스트레이션
+├── nginx.conf           # 라우팅 설정 (chat vs www)
+└── package.json         # 의존성 목록
+```

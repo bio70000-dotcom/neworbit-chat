@@ -8,6 +8,7 @@
     "redis": "^4.6.10",
     "mongoose": "^7.6.3",
     "openai": "^4.0.0",
-    "dotenv": "^16.3.1"
+    "dotenv": "^16.3.1",
+    "prom-client": "^15.1.0"
   }
 }
