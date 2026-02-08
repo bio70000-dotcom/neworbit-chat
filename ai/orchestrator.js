@@ -4,6 +4,38 @@ const { scrubPII } = require('./anonymize/piiScrubber');
 const memory = require('./memory/sessionMemory');
 const personasConfig = require('./personas/personas.json');
 
+/**
+ * 잘린 문장 후처리: 모델이 문장을 완성하지 않고 끊은 경우 정리
+ * 예: "나 26살이야. 그냥 편하게 말" → "나 26살이야."
+ */
+function fixTruncatedText(text) {
+  if (!text || text.length < 2) return text;
+  const t = text.trim();
+
+  // 정상적인 문장 끝: 마침표, 물음표, 느낌표, ~, 따옴표, 괄호, 한글 종결어미, ㅋㅎㅠㅜ
+  const goodEndings = /[.?!~)」』"'ㅋㅎㅠㅜ다요야지어아거든걸까나네데래해줘임됨함봄음만든듯걸용숑행잖혀항엉앙잉웅인할쁨범]$/;
+  if (goodEndings.test(t)) return t;
+
+  // 문장 경계를 찾는다 (마침표/물음표/느낌표/물결표 뒤의 공백 또는 문장 끝)
+  const sentenceBoundaries = [];
+  const re = /[.?!~ㅋㅎㅠㅜ](?:\s|$)/g;
+  let match;
+  while ((match = re.exec(t)) !== null) {
+    sentenceBoundaries.push(match.index + 1); // 구두점 포함 위치
+  }
+
+  // 마지막 완전 문장 경계가 전체의 30% 이상이면 거기서 자르기
+  if (sentenceBoundaries.length > 0) {
+    const lastBound = sentenceBoundaries[sentenceBoundaries.length - 1];
+    if (lastBound > t.length * 0.3) {
+      return t.substring(0, lastBound).trim();
+    }
+  }
+
+  // 문장 경계를 못 찾으면 자연스럽게 마무리
+  return t + '..';
+}
+
 function buildSystemPrompt(persona, profile = {}) {
   const purpose = profile?.purpose ? `대화 목적: ${profile.purpose}` : '';
   const tags = Array.isArray(profile?.tags) && profile.tags.length ? `관심사: ${profile.tags.join(', ')}` : '';
@@ -40,7 +72,7 @@ function buildSystemPrompt(persona, profile = {}) {
     `6. 매 답변마다 질문으로 끝내지 마라. 3번 중 1번 정도만 질문해라. 나머지는 그냥 리액션이나 답변만 해라.`,
     `7. ㅋㅋ, ㅎㅎ 는 3~4번에 한 번만 써라. 매번 붙이지 마라.`,
     `8. 이모티콘(😊😂 등) 절대 쓰지 마라.`,
-    `9. 문장을 반드시 끝까지 완성해라. 말이 중간에 끊기면 안 된다. 짧게 끝내더라도 마침표나 마무리를 해라.`,
+    `9. 문장을 반드시 끝까지 완성해서 보내라. "편하게 말", "그냥 좀" 처럼 동사가 빠진 채 끊기면 절대 안 된다. 짧더라도 "편하게 말해~", "그냥 좀 ㅋㅋ" 처럼 반드시 끝맺음을 해라.`,
     `10. 첫 대화에서는 가볍게 인사하되 한마디 더 붙여라. 예: "오 안녕~ 뭐해?", "반가워 심심했는데 ㅋ", "ㅎㅇ 나도 지금 심심해서 들어왔어"`,
     `11. 프라이버시를 핑계로 질문을 회피하지 마라. 익명 채팅이니까 편하게 답해라. "개인정보라서요"는 사람답지 않다.`,
     `12. 딱딱하거나 예의 바른 존댓말 금지. 카톡 치는 느낌으로 편하게 써라. 상대가 반말하면 반말, 존댓말이면 가벼운 존댓말.`,
@@ -149,7 +181,8 @@ async function replyToUser({ roomId, socketId, userText, inputMaxChars = 2000 })
     text = await generateReply(persona.fallback, { messages, timeoutMs: 4500 }).catch(() => '');
   }
 
-  const finalText = (text || '미안 ㅠ 잠깐 렉 걸렸어. 한 번만 더 말해줄래?').trim();
+  const rawText = (text || '').trim();
+  const finalText = rawText ? fixTruncatedText(rawText) : '미안 ㅠ 잠깐 렉 걸렸어. 한 번만 더 말해줄래?';
 
   // 메모리 갱신(원문 저장 금지 → scrubPII된 텍스트만)
   await memory.appendTurn(roomId, { role: 'user', content: cleanUserText });

@@ -65,7 +65,14 @@ async function generateGemini({ model, messages, maxTokens, temperature, timeout
     }
 
     const data = await res.json();
-    const content = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    const candidate = data?.candidates?.[0];
+    const content = candidate?.content?.parts?.[0]?.text;
+    const finishReason = candidate?.finishReason;
+
+    if (finishReason && finishReason !== 'STOP') {
+      console.warn(`[Gemini] finishReason=${finishReason} model=${model}`);
+    }
+
     return typeof content === 'string' ? content.trim() : '';
   } finally {
     clearTimeout(t);

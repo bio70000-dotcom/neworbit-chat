@@ -1,7 +1,7 @@
 {
-  "version": 5,
+  "version": 6,
   "defaults": {
-    "timeoutMs": 5000,
+    "timeoutMs": 10000,
     "historyTurns": 10,
     "summaryEveryTurns": 8
   },
