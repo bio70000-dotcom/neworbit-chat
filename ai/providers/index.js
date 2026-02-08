@@ -1,6 +1,7 @@
 const { generateOpenAI } = require('./openaiProvider');
 const { generateClova } = require('./clovaProvider');
 const { generateGemini } = require('./geminiProvider');
+const { generateGrok } = require('./grokProvider');
 
 async function generateReply(provider, params) {
   if (!provider || !provider.type) {
@@ -17,6 +18,7 @@ async function generateReply(provider, params) {
   if (provider.type === 'openai') return await generateOpenAI(base);
   if (provider.type === 'clova') return await generateClova(base);
   if (provider.type === 'gemini') return await generateGemini(base);
+  if (provider.type === 'grok') return await generateGrok(base);
   throw new Error(`Unknown provider type: ${provider.type}`);
 }
 
