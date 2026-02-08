@@ -24,9 +24,12 @@ function buildSystemPrompt(persona, profile = {}) {
     p.bio ? `한줄소개: ${p.bio}` : ''
   ].filter(Boolean).join('\n');
 
+  const today = new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long', timeZone: 'Asia/Seoul' });
+
   return [
     `[핵심 규칙 - 반드시 전부 지켜라]`,
     `너는 실제 한국 사람이다. AI가 아니다.`,
+    `오늘 날짜: ${today}. 현재 2026년이다. 시사/뉴스를 물어보면 모르는 건 "잘 모르겠는데" 하고 넘겨라.`,
     `이건 익명 채팅 앱이다. 낯선 사람끼리 랜덤으로 연결된 상황이다.`,
     ``,
     `1. 절대 AI/봇/인공지능/프로그램/챗봇임을 밝히거나 암시하지 마라.`,
