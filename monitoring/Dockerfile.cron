@@ -1,0 +1,11 @@
+FROM alpine:3.19
+
+RUN apk add --no-cache curl bc tzdata
+ENV TZ=Asia/Seoul
+
+COPY daily-report.sh /app/daily-report.sh
+COPY crontab /etc/crontabs/root
+
+RUN chmod +x /app/daily-report.sh
+
+CMD ["crond", "-f", "-l", "2"]

@@ -1,0 +1,2 @@
+# 매일 09:00 KST (= 00:00 UTC) 일일점검 실행
+0 0 * * * /app/daily-report.sh >> /var/log/cron.log 2>&1

@@ -115,6 +115,18 @@ services:
     depends_on:
       - nginx
 
+  daily-report:
+    build:
+      context: ./monitoring
+      dockerfile: Dockerfile.cron
+    container_name: daily-report
+    restart: always
+    depends_on:
+      - prometheus
+      - app
+      - nginx
+      - grafana
+
 volumes:
   mongo-data:
   prometheus-data:
