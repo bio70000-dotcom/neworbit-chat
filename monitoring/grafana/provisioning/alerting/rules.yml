@@ -1,0 +1,192 @@
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: 서비스 상태
+    folder: NewOrbit Alerts
+    interval: 1m
+    rules:
+      # 규칙 1: 채팅 서버 다운 감지
+      - uid: rule-service-down
+        title: "[긴급] 채팅 서버 다운"
+        for: 1m
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: up{job="node-app"}
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: C
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: lt
+                    params:
+                      - 1
+        annotations:
+          summary: "채팅 서버(app:3000)가 다운되었습니다. 즉시 확인 필요!"
+        labels:
+          severity: critical
+
+      # 규칙 2: Nginx 다운 감지
+      - uid: rule-nginx-down
+        title: "[긴급] Nginx 다운"
+        for: 1m
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: up{job="nginx"}
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: C
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: lt
+                    params:
+                      - 1
+        annotations:
+          summary: "Nginx가 다운되었습니다. 외부 접속 불가 상태!"
+        labels:
+          severity: critical
+
+  - orgId: 1
+    name: 인프라 리소스
+    folder: NewOrbit Alerts
+    interval: 1m
+    rules:
+      # 규칙 3: CPU 사용률 80% 초과
+      - uid: rule-cpu-high
+        title: "[경고] CPU 사용률 높음"
+        for: 5m
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: 100 - (avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: C
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params:
+                      - 80
+        annotations:
+          summary: "CPU 사용률이 80%를 초과했습니다 (5분 지속)."
+        labels:
+          severity: warning
+
+      # 규칙 4: 메모리 사용률 85% 초과
+      - uid: rule-memory-high
+        title: "[경고] 메모리 사용률 높음"
+        for: 5m
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: C
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params:
+                      - 85
+        annotations:
+          summary: "메모리 사용률이 85%를 초과했습니다 (5분 지속)."
+        labels:
+          severity: warning
+
+      # 규칙 5: 디스크 사용률 90% 초과
+      - uid: rule-disk-high
+        title: "[경고] 디스크 사용률 높음"
+        for: 5m
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: (1 - node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) * 100
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: C
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params:
+                      - 90
+        annotations:
+          summary: "디스크 사용률이 90%를 초과했습니다 (5분 지속)."
+        labels:
+          severity: warning

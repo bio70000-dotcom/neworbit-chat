@@ -1,0 +1,12 @@
+apiVersion: 1
+
+contactPoints:
+  - orgId: 1
+    name: Telegram
+    receivers:
+      - uid: telegram-neworbit
+        type: telegram
+        settings:
+          bottoken: "8532715514:AAEEliO4yYTqpc2ZyeSk165SsGocPqsz7MM"
+          chatid: "6980402785"
+          parse_mode: HTML
