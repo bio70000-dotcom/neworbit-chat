@@ -43,7 +43,7 @@ async function callGemini(prompt, maxTokens = 2048, temperature = 0.8) {
   const url = `${GEMINI_BASE_URL}/models/${MODEL}:generateContent?key=${apiKey}`;
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30000);
+  const timeout = setTimeout(() => controller.abort(), 60000);
 
   try {
     const res = await fetch(url, {
