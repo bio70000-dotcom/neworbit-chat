@@ -6,8 +6,8 @@
 const fs = require('fs');
 const path = require('path');
 
-const IMAGEN_URL = 'https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict';
-const GEMINI_GENERATE_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent';
+const IMAGEN_URL = 'https://generativelanguage.googleapis.com/v1beta/models/imagen-3:predict';
+const GEMINI_GENERATE_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent';
 
 /**
  * Imagen 3으로 이미지 생성

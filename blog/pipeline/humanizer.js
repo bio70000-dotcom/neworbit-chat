@@ -14,7 +14,7 @@ async function callClaude(systemPrompt, userContent) {
   if (!apiKey) throw new Error('CLAUDE_API_KEY가 설정되지 않았습니다');
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30000);
+  const timeout = setTimeout(() => controller.abort(), 60000);
 
   try {
     const res = await fetch(CLAUDE_API_URL, {

@@ -135,7 +135,7 @@ ${researchData}
   "tags": ["태그1", "태그2", "태그3"]
 }`;
 
-  const raw = await callGemini(prompt, 3000, temp);
+  const raw = await callGemini(prompt, 4096, temp);
 
   // JSON 파싱 (마크다운 코드블록 제거)
   const jsonStr = raw
