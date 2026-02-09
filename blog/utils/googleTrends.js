@@ -1,9 +1,10 @@
 /**
  * Google Trends 키워드 수집 모듈
- * google-trends-api 패키지를 사용해 한국 실시간 트렌드 수집
+ * Google Trends RSS 피드를 직접 파싱하여 한국 실시간 트렌드 수집
+ * (google-trends-api npm 패키지가 불안정하여 직접 구현)
  */
 
-const googleTrends = require('google-trends-api');
+const TRENDS_RSS_URL = 'https://trends.google.co.kr/trending/rss?geo=KR';
 
 // 사이트 관련 카테고리 키워드 (이것과 교집합 되는 트렌드만 선택)
 const SITE_KEYWORDS = [
@@ -12,40 +13,63 @@ const SITE_KEYWORDS = [
   '스트레스', '취미', '혼자', '감성', '일상', '트렌드',
   'AI', '챗봇', '앱', '추천', '방법', '꿀팁', '선물',
   '여행', '맛집', '카페', '데이트', '자취', '직장',
-  '건강', '운동', '다이어트', '뷰티', '패션'
+  '건강', '운동', '다이어트', '뷰티', '패션',
+  '영화', '드라마', '게임', '음악', '공부', '시험',
+  '부동산', '주식', '투자', '절약', '재테크',
 ];
 
 /**
- * Google Trends에서 한국 실시간 인기 검색어 가져오기
+ * Google Trends RSS에서 한국 실시간 인기 검색어 가져오기
  * @returns {Promise<string[]>} 트렌드 키워드 배열
  */
 async function getTrendingKeywords() {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10000);
+
   try {
-    const results = await googleTrends.dailyTrends({
-      trendDate: new Date(),
-      geo: 'KR',
+    const res = await fetch(TRENDS_RSS_URL, {
+      signal: controller.signal,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      },
     });
 
-    const parsed = JSON.parse(results);
-    const days = parsed?.default?.trendingSearchesDays || [];
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}`);
+    }
 
+    const xml = await res.text();
+
+    // RSS XML에서 <title> 태그 파싱 (간단한 정규식)
     const keywords = [];
-    for (const day of days) {
-      for (const search of day.trendingSearches || []) {
-        const title = search?.title?.query;
-        if (title) keywords.push(title);
+    const titleRegex = /<title><!\[CDATA\[(.+?)\]\]><\/title>/g;
+    let match;
+    while ((match = titleRegex.exec(xml)) !== null) {
+      const title = match[1].trim();
+      // RSS의 첫 번째 <title>은 피드 제목이므로 스킵
+      if (title && !title.includes('Trending') && !title.includes('트렌드')) {
+        keywords.push(title);
+      }
+    }
 
-        // 관련 검색어도 수집
-        for (const related of search?.relatedQueries || []) {
-          if (related?.query) keywords.push(related.query);
+    // CDATA 없는 형식도 시도
+    if (keywords.length === 0) {
+      const simpleTitleRegex = /<title>([^<]+)<\/title>/g;
+      while ((match = simpleTitleRegex.exec(xml)) !== null) {
+        const title = match[1].trim();
+        if (title && !title.includes('Trending') && !title.includes('Daily') && title.length > 1) {
+          keywords.push(title);
         }
       }
     }
 
-    return keywords.slice(0, 30); // 최대 30개
+    console.log(`[GoogleTrends] RSS에서 ${keywords.length}개 키워드 수집`);
+    return keywords.slice(0, 30);
   } catch (e) {
-    console.warn(`[GoogleTrends] 트렌드 수집 실패: ${e.message}`);
+    console.warn(`[GoogleTrends] RSS 수집 실패: ${e.message}`);
     return [];
+  } finally {
+    clearTimeout(timeout);
   }
 }
 

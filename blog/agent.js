@@ -150,11 +150,17 @@ async function main() {
       return;
     }
 
-    // 작가 선택 (--writer=id 플래그로 수동 지정 가능)
-    const writerFlag = process.argv.find((a) => a.startsWith('--writer='));
-    const writer = writerFlag
-      ? getWriterById(writerFlag.split('=')[1])
-      : selectWriter();
+    // 작가 선택 (--writer=id 또는 --writer id 플래그로 수동 지정 가능)
+    const writerEqFlag = process.argv.find((a) => a.startsWith('--writer='));
+    const writerSpaceIdx = process.argv.indexOf('--writer');
+    let writer;
+    if (writerEqFlag) {
+      writer = getWriterById(writerEqFlag.split('=')[1]);
+    } else if (writerSpaceIdx !== -1 && process.argv[writerSpaceIdx + 1]) {
+      writer = getWriterById(process.argv[writerSpaceIdx + 1]);
+    } else {
+      writer = selectWriter();
+    }
 
     console.log(`\n[Agent] 오늘의 작가: ${writer.nickname}`);
     console.log(`[Agent] 소개: ${writer.bio}`);

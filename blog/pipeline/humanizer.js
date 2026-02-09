@@ -99,10 +99,19 @@ ${draft.body}`;
   try {
     const raw = await callClaude(systemPrompt, userContent);
 
-    const jsonStr = raw
+    let jsonStr = raw
       .replace(/^```json?\s*/i, '')
       .replace(/```\s*$/i, '')
       .trim();
+
+    // Claude가 JSON 문자열 내부에 제어 문자를 넣는 경우 제거
+    // (탭, 줄바꿈 등을 이스케이프 처리)
+    jsonStr = jsonStr.replace(/[\x00-\x1F\x7F]/g, (ch) => {
+      if (ch === '\n') return '\\n';
+      if (ch === '\r') return '\\r';
+      if (ch === '\t') return '\\t';
+      return '';
+    });
 
     const humanized = JSON.parse(jsonStr);
 
