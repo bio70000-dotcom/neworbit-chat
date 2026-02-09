@@ -1,7 +1,12 @@
 /**
  * 글감 선정 모듈
  * 시즌 캘린더 + Google Trends + 에버그린 주제를 조합하여
- * 하루 3편의 글감을 선정
+ * 1회 실행 시 1편의 글감을 선정 (cron 3회 x 1편 = 하루 3편)
+ *
+ * 소스 선택 확률:
+ *  - 시즌 캘린더: 40% (해당 시기 이벤트가 있을 때)
+ *  - 트렌드: 30%
+ *  - 에버그린: 30% (또는 시즌/트렌드 없을 때 fallback)
  */
 
 const calendar = require('../calendar.json');
@@ -11,11 +16,10 @@ const { isDuplicate, getEvergreenIndex, incrementEvergreenIndex } = require('../
 
 /**
  * 시즌 캘린더에서 지금 발행해야 할 주제 찾기
- * (현재 날짜 기준 publishBefore일 이내인 이벤트)
  */
 function getSeasonalTopics() {
   const now = new Date();
-  const month = String(now.getMonth() + 1); // 1~12
+  const month = String(now.getMonth() + 1);
   const day = now.getDate();
   const year = now.getFullYear();
 
@@ -23,12 +27,11 @@ function getSeasonalTopics() {
 
   return monthEvents
     .filter((event) => {
-      // publishBefore일 전부터 해당 날짜까지 발행 가능
       const daysUntilEvent = event.publishBefore - day;
-      return daysUntilEvent >= 0 && daysUntilEvent <= 21; // 3주 전부터
+      return daysUntilEvent >= 0 && daysUntilEvent <= 21;
     })
     .map((event) => ({
-      keyword: event.keyword.replace(/\d{4}/, String(year)), // 연도 자동 업데이트
+      keyword: event.keyword.replace(/\d{4}/, String(year)),
       category: event.category,
       source: 'seasonal',
     }));
@@ -41,6 +44,8 @@ async function getNextEvergreen() {
   const topics = evergreen.topics;
   const idx = await getEvergreenIndex();
   const topic = topics[idx % topics.length];
+
+  await incrementEvergreenIndex(topics.length);
 
   return {
     keyword: topic.keyword,
@@ -58,7 +63,6 @@ async function getTrendTopic() {
     const trends = await getRelevantTrends();
     if (trends.length === 0) return null;
 
-    // 중복되지 않은 첫 번째 트렌드 선택
     for (const keyword of trends) {
       const dup = await isDuplicate(keyword);
       if (!dup) {
@@ -70,7 +74,6 @@ async function getTrendTopic() {
       }
     }
 
-    // 모두 중복이면 첫 번째 반환
     return {
       keyword: trends[0],
       category: 'trending',
@@ -83,61 +86,40 @@ async function getTrendTopic() {
 }
 
 /**
- * 하루 3편의 글감 선정
- * @returns {Promise<Array<{keyword: string, category: string, source: string}>>}
+ * 1편의 글감 선정 (랜덤 소스 선택)
+ * @returns {Promise<Array>} 1편짜리 배열
  */
 async function selectTopics() {
-  const topics = [];
+  // 소스 우선순위를 랜덤하게 결정
+  const roll = Math.random();
 
-  // 1편: 시즌 캘린더
-  const seasonal = getSeasonalTopics();
-  let seasonalPicked = null;
-  for (const s of seasonal) {
-    const dup = await isDuplicate(s.keyword);
-    if (!dup) {
-      seasonalPicked = s;
-      break;
+  // 40%: 시즌 캘린더 우선
+  if (roll < 0.4) {
+    const seasonal = getSeasonalTopics();
+    for (const s of seasonal) {
+      const dup = await isDuplicate(s.keyword);
+      if (!dup) {
+        console.log(`[TopicSelector] 선정: [${s.source}] "${s.keyword}"`);
+        return [s];
+      }
     }
+    // 시즌 이벤트 없으면 에버그린 fallback
   }
 
-  if (seasonalPicked) {
-    topics.push(seasonalPicked);
-  } else {
-    // 시즌 이벤트 없으면 에버그린으로 대체
-    const eg = await getNextEvergreen();
-    topics.push(eg);
-    await incrementEvergreenIndex(evergreen.topics.length);
+  // 30%: 트렌드 우선
+  if (roll < 0.7) {
+    const trend = await getTrendTopic();
+    if (trend) {
+      console.log(`[TopicSelector] 선정: [${trend.source}] "${trend.keyword}"`);
+      return [trend];
+    }
+    // 트렌드 실패하면 에버그린 fallback
   }
 
-  // 2편: 실시간 트렌드
-  const trend = await getTrendTopic();
-  if (trend) {
-    topics.push(trend);
-  } else {
-    // 트렌드 실패 시 에버그린으로 대체
-    const eg = await getNextEvergreen();
-    topics.push(eg);
-    await incrementEvergreenIndex(evergreen.topics.length);
-  }
-
-  // 3편: 에버그린
+  // 30% 또는 fallback: 에버그린
   const eg = await getNextEvergreen();
-  // 이미 선택된 키워드와 중복 확인
-  const alreadyPicked = topics.map((t) => t.keyword);
-  if (alreadyPicked.includes(eg.keyword)) {
-    // 다음 에버그린으로 이동
-    await incrementEvergreenIndex(evergreen.topics.length);
-    const eg2 = await getNextEvergreen();
-    topics.push(eg2);
-  } else {
-    topics.push(eg);
-  }
-  await incrementEvergreenIndex(evergreen.topics.length);
-
-  console.log(`[TopicSelector] 선정된 글감 ${topics.length}편:`);
-  topics.forEach((t, i) => console.log(`  ${i + 1}. [${t.source}] ${t.keyword}`));
-
-  return topics;
+  console.log(`[TopicSelector] 선정: [${eg.source}] "${eg.keyword}"`);
+  return [eg];
 }
 
 module.exports = { selectTopics };

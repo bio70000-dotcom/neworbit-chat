@@ -2,14 +2,13 @@
  * Blog Agent - AI 자동 게시 에이전트
  *
  * 실행 흐름:
- * 1. 글감 선정 (시즌 캘린더 + Google Trends + 에버그린)
- * 2. 리서치 (네이버 검색 API)
- * 3. 초안 생성 (Gemini Flash)
- * 4. 인간화 (Claude Sonnet)
- * 5. 이미지 생성 (Gemini Imagen)
- * 6. Ghost 발행 (Admin API)
+ * 1. 랜덤 딜레이 (0~55분) - 봇 탐지 회피
+ * 2. 10% 확률로 스킵 - 하루 2~3편으로 자연스러운 패턴
+ * 3. 필수 페이지 확인/생성 (개인정보처리방침, 이용약관, 소개)
+ * 4. 글감 1편 선정
+ * 5. 리서치 → 초안 → 인간화 → 이미지 → 발행
  *
- * cron으로 하루 3회 실행 (KST 10시, 14시, 18시)
+ * cron으로 하루 3회 실행, 각 실행 시 1편씩 발행
  */
 
 require('dotenv').config();
@@ -21,6 +20,7 @@ const { humanize } = require('./pipeline/humanizer');
 const { generateImages } = require('./pipeline/imageGenerator');
 const { publish } = require('./pipeline/publisher');
 const { markPublished, disconnect } = require('./utils/dedup');
+const { ensureRequiredPages } = require('./utils/requiredPages');
 
 const fs = require('fs');
 const path = require('path');
@@ -34,35 +34,45 @@ function cleanupTmp() {
 }
 
 /**
+ * 랜덤 딜레이 (0~55분)
+ * 매번 다른 시각에 발행되어 봇 패턴 회피
+ */
+async function randomDelay() {
+  const delayMin = Math.floor(Math.random() * 55);
+  console.log(`[Agent] 랜덤 딜레이: ${delayMin}분 대기...`);
+  await new Promise((r) => setTimeout(r, delayMin * 60 * 1000));
+  console.log(`[Agent] 딜레이 완료, 작업 시작`);
+}
+
+/**
  * 단일 글 처리 파이프라인
  */
-async function processOne(topic, index) {
-  const label = `[글 ${index + 1}]`;
+async function processOne(topic) {
   console.log(`\n${'='.repeat(60)}`);
-  console.log(`${label} 시작: "${topic.keyword}" (${topic.source})`);
+  console.log(`[글] 시작: "${topic.keyword}" (${topic.source})`);
   console.log('='.repeat(60));
 
   try {
     // Step 1: 리서치
-    console.log(`${label} 1/5 리서치 중...`);
+    console.log('[글] 1/5 리서치 중...');
     const researchData = await research(topic.keyword);
 
     // Step 2: 초안 생성
-    console.log(`${label} 2/5 초안 생성 중 (Gemini Flash)...`);
+    console.log('[글] 2/5 초안 생성 중 (Gemini Flash)...');
     const draft = await writeDraft(topic, researchData);
 
     // Step 3: 인간화
-    console.log(`${label} 3/5 인간화 중 (Claude Sonnet)...`);
+    console.log('[글] 3/5 인간화 중 (Claude Sonnet)...');
     let finalPost;
     try {
       finalPost = await humanize(draft);
     } catch (e) {
-      console.warn(`${label} 인간화 실패, 초안 사용: ${e.message}`);
+      console.warn(`[글] 인간화 실패, 초안 사용: ${e.message}`);
       finalPost = draft;
     }
 
     // Step 4: 이미지 생성
-    console.log(`${label} 4/5 이미지 생성 중 (Gemini Imagen)...`);
+    console.log('[글] 4/5 이미지 생성 중 (Gemini Imagen)...');
     let thumbnailBuffer = null;
     let bodyImageBuffers = [];
     try {
@@ -70,11 +80,11 @@ async function processOne(topic, index) {
       thumbnailBuffer = images.thumbnail;
       bodyImageBuffers = images.bodyImages;
     } catch (e) {
-      console.warn(`${label} 이미지 생성 실패 (글은 이미지 없이 발행): ${e.message}`);
+      console.warn(`[글] 이미지 생성 실패 (이미지 없이 발행): ${e.message}`);
     }
 
     // Step 5: Ghost 발행
-    console.log(`${label} 5/5 Ghost 발행 중...`);
+    console.log('[글] 5/5 Ghost 발행 중...');
     const published = await publish({
       title: finalPost.title,
       body: finalPost.body,
@@ -87,12 +97,12 @@ async function processOne(topic, index) {
     // 발행 성공 → 중복 방지 기록
     await markPublished(topic.keyword);
 
-    console.log(`${label} 발행 성공! "${published?.title}"`);
-    console.log(`${label} URL: ${published?.url || 'N/A'}`);
+    console.log(`[글] 발행 성공! "${published?.title}"`);
+    console.log(`[글] URL: ${published?.url || 'N/A'}`);
 
     return { success: true, title: finalPost.title, url: published?.url };
   } catch (e) {
-    console.error(`${label} 실패: ${e.message}`);
+    console.error(`[글] 실패: ${e.message}`);
     return { success: false, keyword: topic.keyword, error: e.message };
   }
 }
@@ -120,7 +130,29 @@ async function main() {
       console.warn('CLAUDE_API_KEY 없음 - 인간화 단계를 건너뜁니다 (초안 그대로 발행)');
     }
 
-    // 글감 선정
+    // 랜덤 딜레이 (--now 플래그로 즉시 실행 가능)
+    const immediate = process.argv.includes('--now');
+    if (!immediate) {
+      await randomDelay();
+    } else {
+      console.log('[Agent] --now 플래그: 딜레이 없이 즉시 실행');
+    }
+
+    // 10% 확률로 스킵 (하루 2~3편 자연스러운 패턴)
+    if (!immediate && Math.random() < 0.1) {
+      console.log('[Agent] 이번 실행은 랜덤 스킵합니다 (자연스러운 패턴 유지)');
+      return;
+    }
+
+    // AdSense 필수 페이지 확인/생성 (최초 1회)
+    console.log('\n[Step] 필수 페이지 확인 중...');
+    try {
+      await ensureRequiredPages();
+    } catch (e) {
+      console.warn(`[Agent] 필수 페이지 생성 실패 (계속 진행): ${e.message}`);
+    }
+
+    // 글감 선정 (1편만)
     console.log('\n[Step] 글감 선정 중...');
     const topics = await selectTopics();
 
@@ -129,37 +161,25 @@ async function main() {
       process.exit(1);
     }
 
-    // 각 글감별로 순차 처리 (API 호출 간격을 위해)
-    const results = [];
-    for (let i = 0; i < topics.length; i++) {
-      const result = await processOne(topics[i], i);
-      results.push(result);
-
-      // 다음 글 처리 전 10초 대기 (API rate limit 방지)
-      if (i < topics.length - 1) {
-        console.log('\n다음 글 처리 전 10초 대기...');
-        await new Promise((r) => setTimeout(r, 10000));
-      }
-    }
+    // 1편만 처리 (cron 3회 x 1편 = 하루 3편)
+    const topic = topics[0];
+    const result = await processOne(topic);
 
     // 결과 요약
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-    const success = results.filter((r) => r.success).length;
-    const failed = results.filter((r) => !r.success).length;
 
     console.log('\n' + '▓'.repeat(60));
     console.log('  Blog Agent 완료');
-    console.log(`  성공: ${success}편 / 실패: ${failed}편`);
+    console.log(`  결과: ${result.success ? '성공' : '실패'}`);
     console.log(`  소요시간: ${elapsed}초`);
+    if (result.success) {
+      console.log(`  제목: ${result.title}`);
+      console.log(`  URL: ${result.url || 'N/A'}`);
+    } else {
+      console.log(`  키워드: ${result.keyword}`);
+      console.log(`  에러: ${result.error}`);
+    }
     console.log('▓'.repeat(60));
-
-    results.forEach((r, i) => {
-      if (r.success) {
-        console.log(`  ✓ ${i + 1}. ${r.title}`);
-      } else {
-        console.log(`  ✗ ${i + 1}. ${r.keyword}: ${r.error}`);
-      }
-    });
   } catch (e) {
     console.error(`[Agent] 치명적 오류: ${e.message}`);
     console.error(e.stack);
