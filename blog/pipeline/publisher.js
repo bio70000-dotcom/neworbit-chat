@@ -22,13 +22,12 @@ function createGhostToken() {
   const [id, secret] = apiKey.split(':');
   if (!id || !secret) throw new Error('GHOST_ADMIN_API_KEY 형식이 잘못되었습니다 (id:secret)');
 
-  const iat = Math.floor(Date.now() / 1000);
-  const header = { alg: 'HS256', typ: 'JWT', kid: id };
-
+  // Ghost 공식 문서 형식 (keyid + algorithm 사용)
   const token = jwt.sign({}, Buffer.from(secret, 'hex'), {
-    header,
+    keyid: id,
+    algorithm: 'HS256',
     expiresIn: '5m',
-    audience: '/admin/',
+    audience: `/admin/`,
   });
 
   return token;

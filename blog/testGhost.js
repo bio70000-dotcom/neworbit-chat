@@ -20,11 +20,12 @@ const [id, secret] = apiKey.split(':');
 console.log('Key ID:', id);
 console.log('Secret length:', secret?.length);
 
-// JWT 생성
+// JWT 생성 (Ghost 공식 문서 형식)
 const token = jwt.sign({}, Buffer.from(secret, 'hex'), {
-  header: { alg: 'HS256', typ: 'JWT', kid: id },
+  keyid: id,
+  algorithm: 'HS256',
   expiresIn: '5m',
-  audience: '/admin/',
+  audience: `/admin/`,
 });
 
 console.log('JWT Token:', token.slice(0, 50) + '...');
