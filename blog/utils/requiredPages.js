@@ -13,7 +13,8 @@ function createGhostToken() {
 
   const [id, secret] = apiKey.split(':');
   const token = jwt.sign({}, Buffer.from(secret, 'hex'), {
-    header: { alg: 'HS256', typ: 'JWT', kid: id },
+    keyid: id,
+    algorithm: 'HS256',
     expiresIn: '5m',
     audience: '/admin/',
   });
@@ -33,6 +34,23 @@ async function ghostPost(endpoint, body) {
   const token = createGhostToken();
   const res = await fetch(`${GHOST_URL}/ghost/api/admin${endpoint}`, {
     method: 'POST',
+    headers: {
+      Authorization: `Ghost ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Ghost API ${res.status}: ${err.slice(0, 200)}`);
+  }
+  return await res.json();
+}
+
+async function ghostPut(endpoint, body) {
+  const token = createGhostToken();
+  const res = await fetch(`${GHOST_URL}/ghost/api/admin${endpoint}`, {
+    method: 'PUT',
     headers: {
       Authorization: `Ghost ${token}`,
       'Content-Type': 'application/json',
@@ -109,23 +127,34 @@ const REQUIRED_PAGES = [
     slug: 'about',
     title: '소개',
     html: `
-<h2>New Orbit 블로그에 오신 것을 환영합니다</h2>
-<p>New Orbit은 일상, 심리, IT, 소통에 관한 다양한 이야기를 나누는 블로그입니다.</p>
-<p>바쁜 일상 속에서 잠깐 쉬어가고, 새로운 정보도 얻고, 가끔은 누군가와 대화도 나눌 수 있는 공간을 만들고 싶었습니다.</p>
+<h2>Three-Body Blog</h2>
+<p>세 개의 시선, 세 가지 궤도. 서로 다른 세계에서 출발한 세 명의 필자가 하나의 블로그에서 만났습니다.</p>
+
+<h2>세 명의 필자를 소개합니다</h2>
+
+<h3>달산책</h3>
+<p>카페 창가에서 글 쓰는 걸 좋아하는 프리랜서 에디터. 따뜻한 시선으로 일상의 작은 것들을 기록합니다. 라이프스타일, 감성, 인간관계, 여행 이야기를 주로 씁니다.</p>
+
+<h3>텍스트리</h3>
+<p>IT 업계 5년차 개발자. 복잡한 것을 쉽게 설명하는 걸 좋아합니다. 테크, 생산성, 자기계발, 트렌드 분석 등 실용적인 정보 위주로 글 씁니다.</p>
+
+<h3>삐뚤빼뚤</h3>
+<p>호기심 많은 대학원생. 뭐든 일단 해보고 후기 남기는 게 취미입니다. 먹거리, 문화, 솔직한 리뷰, 돈 이야기까지 가감 없이 다룹니다.</p>
 
 <h2>이런 글을 씁니다</h2>
 <ul>
-<li><strong>일상/라이프</strong> - 선물 추천, 여행, 맛집, 트렌드</li>
-<li><strong>심리/힐링</strong> - 스트레스 해소, 자존감, 인간관계</li>
-<li><strong>IT/테크</strong> - 앱 추천, AI 트렌드, 유용한 서비스</li>
-<li><strong>소통</strong> - 대화법, MBTI, 관계 팁</li>
+<li><strong>일상/라이프</strong> — 선물 추천, 여행, 맛집, 계절 이야기</li>
+<li><strong>심리/힐링</strong> — 스트레스 해소, 자존감, 인간관계</li>
+<li><strong>IT/테크</strong> — 앱 추천, AI 트렌드, 유용한 서비스</li>
+<li><strong>소통</strong> — 대화법, MBTI, 관계 팁</li>
+<li><strong>리뷰/문화</strong> — 솔직 후기, 트렌드, 재테크</li>
 </ul>
 
 <h2>함께 이야기해요</h2>
 <p>글을 읽다가 누군가와 이야기하고 싶어지셨다면:</p>
 <ul>
-<li><a href="https://chat.neworbit.co.kr">채팅 시작하기</a> - 관심사가 비슷한 사람과 대화</li>
-<li><a href="https://wave.neworbit.co.kr">전파 보내기</a> - 랜덤한 누군가에게 메시지 보내기</li>
+<li><a href="https://chat.neworbit.co.kr">채팅 시작하기</a> — 관심사가 비슷한 사람과 대화</li>
+<li><a href="https://wave.neworbit.co.kr">전파 보내기</a> — 랜덤한 누군가에게 메시지 보내기</li>
 </ul>
 
 <p>궁금한 점이 있으시면 contact@neworbit.co.kr로 연락주세요.</p>
@@ -138,11 +167,31 @@ const REQUIRED_PAGES = [
  */
 async function ensureRequiredPages() {
   // 기존 페이지 목록 조회
-  const existing = await ghostGet('/pages/?limit=all&fields=slug');
-  const existingSlugs = (existing?.pages || []).map((p) => p.slug);
+  const existing = await ghostGet('/pages/?limit=all&fields=slug,id,updated_at');
+  const existingPages = existing?.pages || [];
+  const existingSlugs = existingPages.map((p) => p.slug);
 
   for (const page of REQUIRED_PAGES) {
     if (existingSlugs.includes(page.slug)) {
+      // 소개 페이지는 내용 업데이트 (Ghost 기본 내용 덮어쓰기)
+      if (page.slug === 'about') {
+        const existingPage = existingPages.find((p) => p.slug === 'about');
+        if (existingPage) {
+          console.log(`[Pages] "${page.title}" 내용 업데이트 중...`);
+          try {
+            await ghostPut(`/pages/${existingPage.id}/`, {
+              pages: [{
+                html: page.html,
+                updated_at: existingPage.updated_at,
+              }],
+            });
+            console.log(`[Pages] "${page.title}" 업데이트 완료`);
+          } catch (e) {
+            console.warn(`[Pages] "${page.title}" 업데이트 실패: ${e.message}`);
+          }
+          continue;
+        }
+      }
       console.log(`[Pages] "${page.title}" 이미 존재 - 스킵`);
       continue;
     }
