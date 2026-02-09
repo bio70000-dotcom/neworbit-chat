@@ -76,14 +76,16 @@ async function processOne(topic, writer) {
       finalPost = draft;
     }
 
-    // Step 4: 이미지 생성
-    console.log('[글] 4/5 이미지 생성 중 (Gemini Imagen)...');
+    // Step 4: 이미지 생성 (AI + Pexels 실사)
+    console.log('[글] 4/5 이미지 생성 중 (AI + Pexels)...');
     let thumbnailBuffer = null;
     let bodyImageBuffers = [];
+    let pexelsImages = [];
     try {
-      const images = await generateImages(finalPost.title, topic.keyword);
+      const images = await generateImages(finalPost.title, topic.keyword, finalPost.body);
       thumbnailBuffer = images.thumbnail;
       bodyImageBuffers = images.bodyImages;
+      pexelsImages = images.pexelsImages || [];
     } catch (e) {
       console.warn(`[글] 이미지 생성 실패 (이미지 없이 발행): ${e.message}`);
     }
@@ -97,6 +99,7 @@ async function processOne(topic, writer) {
       tags: finalPost.tags,
       thumbnailBuffer,
       bodyImageBuffers,
+      pexelsImages,
       writer,
     });
 

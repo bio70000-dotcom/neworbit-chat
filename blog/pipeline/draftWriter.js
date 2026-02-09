@@ -141,11 +141,18 @@ ${researchData}
 
   const raw = await callGemini(prompt, 8192, temp);
 
-  // JSON 파싱 (마크다운 코드블록 제거)
-  const jsonStr = raw
+  // JSON 파싱 (마크다운 코드블록 제거 + JSON 경계 감지)
+  let jsonStr = raw
     .replace(/^```json?\s*/i, '')
     .replace(/```\s*$/i, '')
     .trim();
+
+  // JSON 객체 경계 감지
+  const firstBrace = jsonStr.indexOf('{');
+  const lastBrace = jsonStr.lastIndexOf('}');
+  if (firstBrace !== -1 && lastBrace > firstBrace) {
+    jsonStr = jsonStr.slice(firstBrace, lastBrace + 1);
+  }
 
   try {
     const draft = JSON.parse(jsonStr);
@@ -163,10 +170,36 @@ ${researchData}
     console.error(`[DraftWriter] JSON 파싱 실패: ${e.message}`);
     console.error(`[DraftWriter] Raw response: ${raw.slice(0, 300)}`);
 
+    // Fallback: raw에서 body 필드만 정규식으로 추출 시도
+    const bodyMatch = raw.match(/"body"\s*:\s*"((?:[^"\\]|\\.)*)"/s);
+    if (bodyMatch) {
+      const extractedBody = bodyMatch[1]
+        .replace(/\\n/g, '')
+        .replace(/\\"/g, '"')
+        .replace(/\\\\/g, '\\');
+      const titleMatch = raw.match(/"title"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+      console.log('[DraftWriter] body 필드 정규식 추출 성공');
+      return {
+        title: titleMatch ? titleMatch[1] : `${topic.keyword} - ${year}년 가이드`,
+        metaDescription: `${year}년 ${topic.keyword}에 대한 모든 것을 알려드립니다.`,
+        body: extractedBody,
+        tags: [topic.keyword, topic.category],
+      };
+    }
+
+    // 최종 Fallback: JSON 잔해물 제거 후 순수 텍스트만 사용
+    const cleanText = raw
+      .replace(/```json?\s*/gi, '')
+      .replace(/```/g, '')
+      .replace(/[{}"]/g, '')
+      .replace(/^\s*(title|metaDescription|body|tags)\s*:/gm, '')
+      .trim()
+      .slice(0, 2000);
+
     return {
       title: `${topic.keyword} - ${year}년 완벽 가이드`,
       metaDescription: `${year}년 ${topic.keyword}에 대한 모든 것을 알려드립니다.`,
-      body: `<h2>${topic.keyword}</h2><p>${raw.slice(0, 2000)}</p>`,
+      body: `<h2>${topic.keyword}</h2><p>${cleanText}</p>`,
       tags: [topic.keyword, topic.category],
     };
   }

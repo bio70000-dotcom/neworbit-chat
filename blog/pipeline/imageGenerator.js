@@ -102,12 +102,19 @@ async function generateWithGemini(prompt) {
 }
 
 /**
- * 블로그 이미지 생성 (썸네일 + 본문 이미지)
+ * 블로그 이미지 생성 (썸네일 + AI 본문 이미지 + Pexels 실사 이미지)
+ *
+ * 이미지 구성 (글 1편당 3~4장):
+ * - 썸네일 1장: AI 생성 (Imagen/Gemini) - 일러스트 스타일
+ * - 본문 AI 1장: AI 생성 - 보조 일러스트
+ * - 본문 실사 2장: Pexels 스톡 사진 - 글 내용에 맞는 실제 사진
+ *
  * @param {string} title 글 제목
  * @param {string} keyword 키워드
- * @returns {Promise<{thumbnail: Buffer|null, bodyImages: Buffer[]}>}
+ * @param {string} bodyHtml 본문 HTML (Pexels 키워드 추출용, 선택)
+ * @returns {Promise<{thumbnail: Buffer|null, bodyImages: Buffer[], pexelsImages: Array}>}
  */
-async function generateImages(title, keyword) {
+async function generateImages(title, keyword, bodyHtml = '') {
   const thumbnailPrompt = `A clean, bright, modern blog header illustration for the topic "${keyword}". 
 Flat design style, pastel colors, no text, no watermark, 16:9 aspect ratio. 
 Professional blog thumbnail aesthetic. Korean lifestyle theme.`;
@@ -118,24 +125,32 @@ Suitable for a Korean lifestyle blog article.`;
 
   console.log(`[ImageGen] 이미지 생성 시작: "${keyword}"`);
 
-  // 썸네일 생성 (Imagen → Gemini fallback)
+  // 1. 썸네일 생성 (Imagen → Gemini fallback)
   let thumbnail = await generateWithImagen(thumbnailPrompt);
   if (!thumbnail) {
     console.log('[ImageGen] Imagen 실패, Gemini Flash로 fallback');
     thumbnail = await generateWithGemini(thumbnailPrompt);
   }
 
-  // 본문 이미지 1장
+  // 2. 본문 AI 이미지 1장
   let bodyImage = await generateWithImagen(bodyPrompt);
   if (!bodyImage) {
     bodyImage = await generateWithGemini(bodyPrompt);
   }
-
   const bodyImages = bodyImage ? [bodyImage] : [];
 
-  console.log(`[ImageGen] 생성 완료: 썸네일 ${thumbnail ? 'O' : 'X'}, 본문 ${bodyImages.length}장`);
+  // 3. Pexels 실사 이미지 2장
+  let pexelsImages = [];
+  try {
+    const { searchRelevantPhotos } = require('../utils/pexelsSearch');
+    pexelsImages = await searchRelevantPhotos(bodyHtml, keyword, 2);
+  } catch (e) {
+    console.warn(`[ImageGen] Pexels 검색 실패: ${e.message}`);
+  }
 
-  return { thumbnail, bodyImages };
+  console.log(`[ImageGen] 생성 완료: 썸네일 ${thumbnail ? 'O' : 'X'}, AI ${bodyImages.length}장, 실사 ${pexelsImages.length}장`);
+
+  return { thumbnail, bodyImages, pexelsImages };
 }
 
 /**

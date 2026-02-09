@@ -173,23 +173,54 @@ async function publish(post) {
     }
   }
 
-  // 2. 본문 이미지 업로드 및 삽입
+  // 2. 이미지 삽입 (AI 생성 + Pexels 실사를 h2 사이사이에 분산 배치)
+  const allImages = []; // { html: string } 배열
+
+  // 2-1. AI 생성 이미지 업로드
   if (post.bodyImageBuffers && post.bodyImageBuffers.length > 0) {
     for (let i = 0; i < post.bodyImageBuffers.length; i++) {
       try {
         const imgUrl = await uploadImage(post.bodyImageBuffers[i], `body-${Date.now()}-${i}.png`);
-        // 본문의 첫 번째 </h2> 뒤에 이미지 삽입
-        const insertPoint = bodyHtml.indexOf('</h2>');
-        if (insertPoint !== -1) {
-          const insertIdx = insertPoint + 5;
-          bodyHtml =
-            bodyHtml.slice(0, insertIdx) +
-            `<figure><img src="${imgUrl}" alt="${post.title}" /></figure>` +
-            bodyHtml.slice(insertIdx);
-        }
-        console.log(`[Publisher] 본문 이미지 ${i + 1} 업로드 완료`);
+        allImages.push({
+          html: `<figure><img src="${imgUrl}" alt="${post.title}" /></figure>`,
+        });
+        console.log(`[Publisher] AI 이미지 ${i + 1} 업로드 완료`);
       } catch (e) {
-        console.warn(`[Publisher] 본문 이미지 ${i + 1} 업로드 실패: ${e.message}`);
+        console.warn(`[Publisher] AI 이미지 ${i + 1} 업로드 실패: ${e.message}`);
+      }
+    }
+  }
+
+  // 2-2. Pexels 실사 이미지 (업로드 없이 외부 URL 직접 삽입 → Pexels CDN에서 서빙)
+  if (post.pexelsImages && post.pexelsImages.length > 0) {
+    for (const pImg of post.pexelsImages) {
+      allImages.push({
+        html: `<figure><img src="${pImg.url}" alt="${pImg.alt}" loading="lazy" /><figcaption>Photo by ${pImg.photographer} on <a href="${pImg.pexelsUrl}" target="_blank" rel="noopener">Pexels</a></figcaption></figure>`,
+      });
+      console.log(`[Publisher] Pexels 이미지 삽입: ${pImg.photographer}`);
+    }
+  }
+
+  // 2-3. 이미지를 h2 태그 뒤에 분산 배치
+  if (allImages.length > 0) {
+    const h2Positions = [];
+    const h2Regex = /<\/h2>/gi;
+    let h2Match;
+    while ((h2Match = h2Regex.exec(bodyHtml)) !== null) {
+      h2Positions.push(h2Match.index + h2Match[0].length);
+    }
+
+    // 이미지를 균등하게 분배 (첫 번째, 세 번째 h2 뒤 등)
+    if (h2Positions.length > 0) {
+      const step = Math.max(1, Math.floor(h2Positions.length / (allImages.length + 1)));
+      let insertOffset = 0;
+
+      for (let i = 0; i < allImages.length && i * step < h2Positions.length; i++) {
+        const posIdx = Math.min((i + 1) * step - 1, h2Positions.length - 1);
+        const insertAt = h2Positions[posIdx] + insertOffset;
+        const imgHtml = allImages[i].html;
+        bodyHtml = bodyHtml.slice(0, insertAt) + imgHtml + bodyHtml.slice(insertAt);
+        insertOffset += imgHtml.length;
       }
     }
   }
