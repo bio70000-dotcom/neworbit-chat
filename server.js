@@ -61,6 +61,107 @@ redisClient.connect().catch(console.error);
 
 const WAITING_QUEUE = 'waiting_queue';
 const waveRedis = require('./lib/waveRedis');
+const { selectPersona } = require('./ai/personas/selectPersona');
+
+// ============ 채팅(rooms) 인메모리 상태 ============
+const chatRooms = new Map(); // roomId -> { settings, roomSize, sockets, humans, aiParticipants, timers }
+
+function normalizeSettings(input = {}) {
+  const roomSize = [2, 3, 4].includes(Number(input.roomSize)) ? Number(input.roomSize) : 2;
+  const ageGroup = ['10s', '20s', '30s', '40plus'].includes(input.ageGroup) ? input.ageGroup : 'na';
+  const gender = ['male', 'female'].includes(input.gender) ? input.gender : 'na';
+  const interests = Array.isArray(input.interests)
+    ? input.interests.map((s) => String(s).trim()).filter(Boolean).slice(0, 6)
+    : String(input.interests || '').split(',').map((s) => s.trim()).filter(Boolean).slice(0, 6);
+  return { roomSize, ageGroup, gender, interests };
+}
+
+function normalizeTags(interests = []) {
+  const tags = new Set();
+  const text = interests.join(' ');
+  if (/(코딩|개발|프로그래밍|it|tech|테크)/i.test(text)) { tags.add('dev'); tags.add('it'); }
+  if (/(게임|롤|발로|콘솔|스팀)/i.test(text)) tags.add('game');
+  if (/(스포츠|축구|야구|농구)/i.test(text)) tags.add('sports');
+  if (/(연애|사랑|썸)/i.test(text)) tags.add('love');
+  if (/(심리|상담|멘탈)/i.test(text)) tags.add('psych');
+  if (/(경제|주식|코인|비트코인|부동산|환율)/i.test(text)) tags.add('finance');
+  return Array.from(tags);
+}
+
+function roomMatches(roomSettings, userSettings) {
+  if (roomSettings.roomSize !== userSettings.roomSize) return false;
+  if (roomSettings.interests.length > 0 && userSettings.interests.length > 0) {
+    const set = new Set(roomSettings.interests);
+    const overlap = userSettings.interests.some((i) => set.has(i));
+    return overlap;
+  }
+  return true;
+}
+
+function getPersonaName(personaId) {
+  const p = getPersonaList().find((x) => x.id === personaId);
+  return p?.profile?.displayName || '상대';
+}
+
+async function addAiToRoom(roomId, reason = 'wait') {
+  const room = chatRooms.get(roomId);
+  if (!room) return;
+  if (room.humans.size + room.aiParticipants.length >= room.roomSize) return;
+  const aiIndex = room.aiParticipants.length + 1;
+  const tags = normalizeTags(room.settings.interests);
+  const profile = { purpose: 'smalltalk', tags, ageGroup: room.settings.ageGroup, gender: room.settings.gender };
+  const persona = selectPersona(profile, { exploreRate: aiIndex === 1 ? 0.2 : 0.6 });
+  const aiKey = `${roomId}:ai${aiIndex}`;
+  const aiSocketId = `ai_${roomId}_${aiIndex}`;
+
+  room.aiParticipants.push({ id: aiIndex, key: aiKey, socketId: aiSocketId, personaId: persona.id, name: getPersonaName(persona.id) });
+
+  // AI가 가볍게 인사(사람처럼 딜레이)
+  setTimeout(async () => {
+    if (!chatRooms.has(roomId)) return;
+    const end = aiReplyLatencyMs.startTimer();
+    const result = await replyToUser({
+      roomId: aiKey,
+      socketId: aiSocketId,
+      userText: '들어왔어~'
+    }).catch(() => ({ text: '들어왔어~', personaId: persona.id, provider: 'na', fallback: false }));
+    end({ provider: result.provider || 'na', fallback: String(!!result.fallback) });
+    aiRepliesTotal.inc({ persona: result.personaId || persona.id, provider: result.provider || 'na', fallback: String(!!result.fallback) });
+    io.to(roomId).emit('chat_message', { senderType: 'ai', senderName: getPersonaName(result.personaId || persona.id), text: result.text });
+  }, 1200 + Math.floor(Math.random() * 1200));
+
+  io.to(roomId).emit('room_joined', buildRoomPayload(room));
+  console.log(`[ChatRoom] AI joined (${reason}) ${roomId}`);
+}
+
+function buildRoomPayload(room) {
+  return {
+    roomId: room.roomId,
+    roomSize: room.roomSize,
+    humans: room.humans.size,
+    ai: room.aiParticipants.length
+  };
+}
+
+async function sendAiResponses(roomId, userText) {
+  const room = chatRooms.get(roomId);
+  if (!room || room.aiParticipants.length === 0) return;
+  const tasks = room.aiParticipants.map(async (ai, idx) => {
+    await new Promise((r) => setTimeout(r, 800 * idx));
+    await humanDelay();
+    if (!chatRooms.has(roomId)) return;
+    const end = aiReplyLatencyMs.startTimer();
+    const result = await replyToUser({
+      roomId: ai.key,
+      socketId: ai.socketId,
+      userText
+    }).catch(() => ({ text: '잠깐만 ㅠ', personaId: ai.personaId, provider: 'na', fallback: false }));
+    end({ provider: result.provider || 'na', fallback: String(!!result.fallback) });
+    aiRepliesTotal.inc({ persona: result.personaId || ai.personaId, provider: result.provider || 'na', fallback: String(!!result.fallback) });
+    io.to(roomId).emit('chat_message', { senderType: 'ai', senderName: getPersonaName(result.personaId || ai.personaId), text: result.text });
+  });
+  await Promise.all(tasks);
+}
 
 // 사람처럼 보이기 위한 타이핑 딜레이 (2~5초 랜덤)
 function humanDelay() {
@@ -68,11 +169,14 @@ function humanDelay() {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// ============ HTTP: wave.neworbit.co.kr 이면 전파 앱 정적 서빙 ============
+// ============ HTTP: 도메인별 정적 서빙 ============
 app.use((req, res, next) => {
   const host = (req.get('host') || '').toLowerCase();
   if (host.includes('wave.neworbit')) {
     return express.static('wave', { index: 'index.html' })(req, res, next);
+  }
+  if (host.includes('chat.neworbit')) {
+    return express.static('chat', { index: 'index.html' })(req, res, next);
   }
   next();
 });
@@ -231,87 +335,111 @@ io.on('connection', (socket) => {
         return;
     }
 
-    // ========== 기존 채팅(chat) 플로우 ==========
+    // ========== 채팅(chat) 플로우 ==========
+    function leaveRoom() {
+        const roomId = socket.data.roomId;
+        if (!roomId) return;
+        const room = chatRooms.get(roomId);
+        if (!room) return;
+        room.sockets.delete(socket.id);
+        room.humans.delete(socket.id);
+        socket.leave(roomId);
+        socket.data.roomId = null;
+        if (room.humans.size === 0) {
+            if (room.timers?.ai1) clearTimeout(room.timers.ai1);
+            if (room.timers?.ai2) clearTimeout(room.timers.ai2);
+            chatRooms.delete(roomId);
+        } else {
+            io.to(roomId).emit('room_joined', buildRoomPayload(room));
+        }
+    }
+
     socket.on('disconnect', () => {
         console.log('User disconnected:', socket.id);
         activeConnections.dec();
+        leaveRoom();
     });
 
-    // 초기 프로필 설정 (목적/관심사/옵션 연령/성별)
-    // 예: socket.emit('set_profile', { purpose: 'smalltalk', tags: ['game','music'], ageGroup: '20s', gender: 'na' })
-    socket.on('set_profile', async (profile) => {
-        try {
-            await sessionMemory.setProfile(socket.id, profile, 3600);
-            socket.emit('profile_saved', { ok: true });
-        } catch (e) {
-            console.error('set_profile error:', e);
-            socket.emit('profile_saved', { ok: false });
-        }
+    socket.on('chat_leave', () => {
+        leaveRoom();
     });
 
-    // 대기열 참가
-    socket.on('join_queue', async () => {
-        const queueLength = await redisClient.lLen(WAITING_QUEUE);
+    // 방 만들기/접속 요청
+    socket.on('chat_request', async (payload = {}) => {
+        const mode = payload.mode === 'create' ? 'create' : 'existing';
+        const settings = normalizeSettings(payload.settings || {});
 
-        if (queueLength > 0) {
-            // 대기자가 있으면 즉시 매칭
-            const partnerId = await redisClient.rPop(WAITING_QUEUE);
-            const roomId = "room_" + socket.id + "_" + partnerId;
-            
-            socket.join(roomId);
-            io.to(partnerId).socketsJoin(roomId);
-            
-            io.to(roomId).emit('match_success', { roomId, partner: 'human' });
-            matchesTotal.inc({ type: 'human' });
-            
-        } else {
-            // 대기자가 없으면 대기열 등록
-            await redisClient.lPush(WAITING_QUEUE, socket.id);
-            
-            // 15초 뒤 AI 매칭 (Fallback)
-            setTimeout(async () => {
-                const stillWaiting = await redisClient.lRem(WAITING_QUEUE, 0, socket.id);
-                if (stillWaiting > 0) {
-                    const roomId = "ai_room_" + socket.id;
-                    socket.join(roomId);
-                    socket.emit('match_success', { roomId, partner: 'ai' });
-                    matchesTotal.inc({ type: 'ai' });
-                    // 페르소나 고정(방 단위)
-                    await ensurePersonaForRoom(roomId, socket.id);
-                    
-                    // AI가 먼저 인사
-                    setTimeout(async () => {
-                         const { text, personaId, provider, fallback } = await replyToUser({
-                            roomId,
-                            socketId: socket.id,
-                            userText: "안녕? 반가워 ㅋㅋ"
-                         });
-                         aiRepliesTotal.inc({ persona: personaId, provider: provider || 'na', fallback: String(!!fallback) });
-                         socket.emit('message', { sender: 'partner', text });
-                    }, 1000);
+        // 사용자 프로필 저장(간단)
+        const tags = normalizeTags(settings.interests);
+        await sessionMemory.setProfile(socket.id, { purpose: 'smalltalk', tags, ageGroup: settings.ageGroup, gender: settings.gender }, 3600).catch(() => {});
+
+        // 기존 방 찾기
+        let targetRoom = null;
+        if (mode === 'existing') {
+            for (const room of chatRooms.values()) {
+                if (room.humans.size >= room.roomSize) continue;
+                if (room.humans.size < 1) continue;
+                if (roomMatches(room.settings, settings)) {
+                    targetRoom = room;
+                    break;
                 }
-            }, 15000);
+            }
         }
+
+        // 새 방 생성
+        if (!targetRoom) {
+            const roomId = `chat_${Date.now()}_${socket.id}`;
+            targetRoom = {
+                roomId,
+                settings,
+                roomSize: settings.roomSize,
+                sockets: new Set(),
+                humans: new Set(),
+                aiParticipants: [],
+                timers: {}
+            };
+            chatRooms.set(roomId, targetRoom);
+
+            // 5초 대기 후 AI 1명 입장
+            targetRoom.timers.ai1 = setTimeout(async () => {
+                const room = chatRooms.get(roomId);
+                if (!room) return;
+                if (room.humans.size === 1 && room.aiParticipants.length === 0) {
+                    await addAiToRoom(roomId, 'wait-5s');
+                }
+            }, 5000);
+
+            // 60초 후에도 사람 미입장 시 AI 추가
+            targetRoom.timers.ai2 = setTimeout(async () => {
+                const room = chatRooms.get(roomId);
+                if (!room) return;
+                if (room.humans.size === 1 && room.aiParticipants.length === 1 && room.humans.size + room.aiParticipants.length < room.roomSize) {
+                    await addAiToRoom(roomId, 'wait-60s');
+                }
+            }, 65000);
+        }
+
+        // 방 참여
+        const roomId = targetRoom.roomId;
+        socket.join(roomId);
+        socket.data.roomId = roomId;
+        targetRoom.sockets.add(socket.id);
+        targetRoom.humans.add(socket.id);
+
+        socket.emit('room_wait', { roomId, message: '대기 중이에요...' });
+        io.to(roomId).emit('room_joined', buildRoomPayload(targetRoom));
+        matchesTotal.inc({ type: 'human' });
     });
 
     // 메시지 전송
-    socket.on('message', async (data) => {
-        const { roomId, message, partnerType } = data;
-        socket.to(roomId).emit('message', { sender: 'partner', text: message });
+    socket.on('chat_message', async (data = {}) => {
+        const roomId = data.roomId || socket.data.roomId;
+        const room = chatRooms.get(roomId);
+        const msg = String(data.text || '').trim().slice(0, 2000);
+        if (!room || !msg) return;
+        socket.to(roomId).emit('chat_message', { senderType: 'human', senderName: '상대', text: msg });
         messagesTotal.inc();
-
-        // 상대가 AI면 답변 생성
-        if (partnerType === 'ai') {
-            const end = aiReplyLatencyMs.startTimer();
-            const { text, personaId, provider, fallback } = await replyToUser({
-                roomId,
-                socketId: socket.id,
-                userText: message
-            });
-            aiRepliesTotal.inc({ persona: personaId, provider: provider || 'na', fallback: String(!!fallback) });
-            end({ provider: provider || 'na', fallback: String(!!fallback) });
-            io.to(roomId).emit('message', { sender: 'partner', text });
-        }
+        await sendAiResponses(roomId, msg);
     });
 });
 

@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chat - neworbit</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; }
+    .container { max-width: 520px; margin: 0 auto; padding: 16px; min-height: 100vh; display: flex; flex-direction: column; }
+    h1 { font-size: 1.5rem; margin: 0 0 8px; background: linear-gradient(90deg, #38bdf8, #a78bfa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    .sub { color: #94a3b8; font-size: 0.875rem; margin-bottom: 16px; }
+    .state { padding: 12px; border-radius: 8px; background: #1e293b; margin-bottom: 16px; font-size: 0.875rem; color: #94a3b8; }
+    .state.in { background: #1e3a2f; color: #86efac; }
+    .card { background: #0b1220; border: 1px solid #1f2937; border-radius: 12px; padding: 12px; margin-bottom: 12px; }
+    .row { display: flex; gap: 8px; margin-bottom: 10px; }
+    .row.wrap { flex-wrap: wrap; }
+    .btn { padding: 10px 14px; border-radius: 10px; border: none; font-weight: 600; cursor: pointer; font-size: 0.9rem; }
+    .btn.primary { background: linear-gradient(135deg, #6366f1, #a855f7); color: #fff; }
+    .btn.secondary { background: #1f2937; color: #cbd5f5; }
+    .btn.ghost { background: transparent; border: 1px solid #334155; color: #94a3b8; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    label { font-size: 0.8rem; color: #94a3b8; display: block; margin-bottom: 6px; }
+    select, input[type="text"] { width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid #334155; background: #111827; color: #e2e8f0; }
+    input::placeholder { color: #64748b; }
+    #chatArea { display: none; flex: 1; flex-direction: column; }
+    #chatArea.visible { display: flex; }
+    #messages { flex: 1; overflow-y: auto; min-height: 220px; max-height: calc(100vh - 320px); padding: 8px 0; scroll-behavior: smooth; }
+    .msg { margin-bottom: 10px; padding: 10px 12px; border-radius: 14px; max-width: 85%; animation: msgIn 0.3s ease; }
+    .msg.me { margin-left: auto; background: #4338ca; color: #fff; border-bottom-right-radius: 4px; }
+    .msg.other { background: #1e293b; border: 1px solid #334155; border-bottom-left-radius: 4px; }
+    .msg .who { font-size: 0.7rem; color: #94a3b8; margin-bottom: 4px; }
+    #chatInputRow { display: flex; gap: 8px; margin-top: 10px; }
+    #chatInput { flex: 1; }
+    .hidden { display: none; }
+    .error { color: #f87171; font-size: 0.85rem; margin-top: 6px; }
+    .badge { display: inline-block; font-size: 0.7rem; color: #93c5fd; border: 1px solid #1d4ed8; padding: 2px 6px; border-radius: 8px; }
+    @keyframes msgIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Chat</h1>
+    <div class="sub">방을 만들거나 기존 방에 들어가요. 사람 대기 시 AI가 먼저 들어와요.</div>
+    <div class="state" id="state">방을 선택해주세요.</div>
+
+    <div class="card" id="modeCard">
+      <div class="row wrap">
+        <button class="btn primary" id="btnExisting">기존 방 접속</button>
+        <button class="btn secondary" id="btnCreate">새 방 만들기</button>
+      </div>
+      <div class="row">
+        <span class="badge" id="modeBadge">선택 없음</span>
+      </div>
+    </div>
+
+    <div class="card hidden" id="settingsCard">
+      <div class="row wrap">
+        <div style="flex:1; min-width: 140px;">
+          <label>연령대</label>
+          <select id="ageGroup">
+            <option value="na">상관없음</option>
+            <option value="20s">20대</option>
+            <option value="30s">30대</option>
+            <option value="40plus">40대+</option>
+          </select>
+        </div>
+        <div style="flex:1; min-width: 140px;">
+          <label>성별</label>
+          <select id="gender">
+            <option value="na">상관없음</option>
+            <option value="male">남</option>
+            <option value="female">여</option>
+          </select>
+        </div>
+      </div>
+      <div class="row">
+        <div style="flex:1;">
+          <label>관심사 (콤마로 구분)</label>
+          <input type="text" id="interests" placeholder="예: 코딩, 게임, 경제" />
+        </div>
+      </div>
+      <div class="row">
+        <div style="flex:1;">
+          <label>채팅방 인원</label>
+          <select id="roomSize">
+            <option value="2">1:1</option>
+            <option value="3">3인</option>
+            <option value="4">4인</option>
+          </select>
+        </div>
+      </div>
+      <div class="row">
+        <button class="btn primary" id="btnStart">입장하기</button>
+        <button class="btn ghost" id="btnReset">다시 선택</button>
+      </div>
+      <div class="error" id="error"></div>
+    </div>
+
+    <div id="chatArea">
+      <div id="messages"></div>
+      <div id="chatInputRow">
+        <input type="text" id="chatInput" placeholder="메시지..." maxlength="2000" />
+        <button class="btn primary" id="btnSend">보내기</button>
+        <button class="btn ghost" id="btnLeave">나가기</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const stateEl = document.getElementById('state');
+    const modeBadge = document.getElementById('modeBadge');
+    const modeCard = document.getElementById('modeCard');
+    const settingsCard = document.getElementById('settingsCard');
+    const chatArea = document.getElementById('chatArea');
+    const messagesEl = document.getElementById('messages');
+    const errorEl = document.getElementById('error');
+    const chatInput = document.getElementById('chatInput');
+    const roomSizeEl = document.getElementById('roomSize');
+    const ageGroupEl = document.getElementById('ageGroup');
+    const genderEl = document.getElementById('gender');
+    const interestsEl = document.getElementById('interests');
+
+    const btnExisting = document.getElementById('btnExisting');
+    const btnCreate = document.getElementById('btnCreate');
+    const btnStart = document.getElementById('btnStart');
+    const btnReset = document.getElementById('btnReset');
+    const btnSend = document.getElementById('btnSend');
+    const btnLeave = document.getElementById('btnLeave');
+
+    let selectedMode = null;
+    let currentRoomId = null;
+    let socket = null;
+
+    function showError(msg) { errorEl.textContent = msg || ''; }
+    function scrollToBottom() { requestAnimationFrame(() => { messagesEl.scrollTop = messagesEl.scrollHeight; }); }
+    function addMessage(who, text, name) {
+      const div = document.createElement('div');
+      div.className = 'msg ' + (who === 'me' ? 'me' : 'other');
+      const whoLabel = who === 'me' ? '나' : (name || '상대');
+      div.innerHTML = '<div class="who">' + escapeHtml(whoLabel) + '</div><div>' + escapeHtml(text) + '</div>';
+      messagesEl.appendChild(div);
+      scrollToBottom();
+    }
+    function escapeHtml(s) {
+      const d = document.createElement('div');
+      d.textContent = s;
+      return d.innerHTML;
+    }
+    function setState(text, isIn) {
+      stateEl.textContent = text;
+      stateEl.classList.toggle('in', !!isIn);
+    }
+    function showSettings() { settingsCard.classList.remove('hidden'); }
+    function hideSettings() { settingsCard.classList.add('hidden'); }
+    function showChat() { chatArea.classList.add('visible'); }
+    function reset() {
+      selectedMode = null;
+      currentRoomId = null;
+      modeBadge.textContent = '선택 없음';
+      modeCard.classList.remove('hidden');
+      hideSettings();
+      showError('');
+      messagesEl.innerHTML = '';
+      setState('방을 선택해주세요.');
+      chatArea.classList.remove('visible');
+    }
+
+    btnExisting.addEventListener('click', () => {
+      selectedMode = 'existing';
+      modeBadge.textContent = '기존 방 접속';
+      showSettings();
+    });
+    btnCreate.addEventListener('click', () => {
+      selectedMode = 'create';
+      modeBadge.textContent = '새 방 만들기';
+      showSettings();
+    });
+    btnReset.addEventListener('click', () => reset());
+
+    function connect() {
+      socket = io({ transports: ['websocket', 'polling'] });
+      socket.on('connect', () => { showError(''); });
+      socket.on('connect_error', () => showError('연결 실패. 새로고침 해보세요.'));
+
+      socket.on('room_wait', (data) => {
+        currentRoomId = data.roomId;
+        setState(data.message || '대기 중이에요...');
+      });
+      socket.on('room_joined', (data) => {
+        currentRoomId = data.roomId;
+        const info = `방 인원 ${data.humans + data.ai}/${data.roomSize}`;
+        setState('연결되었습니다. ' + info, true);
+        showChat();
+      });
+      socket.on('chat_message', (data) => {
+        addMessage('other', data.text || '', data.senderName || '상대');
+      });
+    }
+
+    btnStart.addEventListener('click', () => {
+      if (!selectedMode) return showError('방 선택을 먼저 해주세요.');
+      showError('');
+      const settings = {
+        ageGroup: ageGroupEl.value,
+        gender: genderEl.value,
+        interests: interestsEl.value,
+        roomSize: parseInt(roomSizeEl.value, 10)
+      };
+      socket.emit('chat_request', { mode: selectedMode, settings });
+      setState('대기 중이에요...');
+      modeCard.classList.add('hidden');
+      hideSettings();
+    });
+
+    btnSend.addEventListener('click', () => {
+      const text = chatInput.value.trim();
+      if (!text || !currentRoomId) return;
+      socket.emit('chat_message', { roomId: currentRoomId, text });
+      addMessage('me', text);
+      chatInput.value = '';
+    });
+    chatInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') btnSend.click(); });
+
+    btnLeave.addEventListener('click', () => {
+      if (currentRoomId) socket.emit('chat_leave', { roomId: currentRoomId });
+      reset();
+    });
+
+    connect();
+    reset();
+  </script>
+</body>
+</html>
