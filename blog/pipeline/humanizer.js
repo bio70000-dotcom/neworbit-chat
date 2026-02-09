@@ -5,7 +5,7 @@
  */
 
 const CLAUDE_API_URL = 'https://api.anthropic.com/v1/messages';
-const CLAUDE_MODEL = 'claude-sonnet-4-5-20250929';
+const CLAUDE_MODEL = 'claude-sonnet-4-5';
 
 // ── Claude API ──────────────────────────────────────
 
@@ -14,7 +14,7 @@ async function callClaude(systemPrompt, userContent) {
   if (!apiKey) throw new Error('CLAUDE_API_KEY가 설정되지 않았습니다');
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 60000);
+  const timeout = setTimeout(() => controller.abort(), 120000);
 
   try {
     const res = await fetch(CLAUDE_API_URL, {
