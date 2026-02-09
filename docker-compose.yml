@@ -161,6 +161,7 @@ services:
       - url=https://blog.neworbit.co.kr
       - database__client=sqlite3
       - database__connection__filename=/var/lib/ghost/content/data/ghost.db
+      - mail__transport=Direct
       - NODE_ENV=production
     volumes:
       - ghost-data:/var/lib/ghost/content
