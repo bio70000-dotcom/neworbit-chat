@@ -1,0 +1,86 @@
+{
+  "1": [
+    { "keyword": "새해 다짐 추천", "publishBefore": 1, "category": "일상" },
+    { "keyword": "신년 인사말 모음", "publishBefore": 1, "category": "소통" },
+    { "keyword": "설 선물 추천", "publishBefore": 28, "category": "일상" },
+    { "keyword": "겨울 실내 데이트 추천", "publishBefore": 15, "category": "일상" },
+    { "keyword": "새해 목표 세우는 법", "publishBefore": 5, "category": "심리" }
+  ],
+  "2": [
+    { "keyword": "발렌타인데이 선물 추천", "publishBefore": 14, "category": "일상" },
+    { "keyword": "졸업 선물 추천", "publishBefore": 20, "category": "일상" },
+    { "keyword": "졸업 축하 메시지 모음", "publishBefore": 20, "category": "소통" },
+    { "keyword": "입학 준비물 체크리스트", "publishBefore": 25, "category": "일상" },
+    { "keyword": "겨울 끝물 여행지 추천", "publishBefore": 15, "category": "일상" }
+  ],
+  "3": [
+    { "keyword": "봄 나들이 장소 추천", "publishBefore": 15, "category": "일상" },
+    { "keyword": "이직 시즌 면접 팁", "publishBefore": 10, "category": "일상" },
+    { "keyword": "봄 패션 코디 추천", "publishBefore": 5, "category": "일상" },
+    { "keyword": "개학 준비 꿀팁", "publishBefore": 2, "category": "일상" },
+    { "keyword": "화이트데이 선물 추천", "publishBefore": 14, "category": "일상" }
+  ],
+  "4": [
+    { "keyword": "벚꽃 명소 추천", "publishBefore": 10, "category": "일상" },
+    { "keyword": "봄 캠핑 준비물", "publishBefore": 15, "category": "일상" },
+    { "keyword": "만우절 장난 아이디어", "publishBefore": 1, "category": "소통" },
+    { "keyword": "어버이날 선물 추천", "publishBefore": 30, "category": "일상" },
+    { "keyword": "봄 소풍 도시락 레시피", "publishBefore": 20, "category": "일상" }
+  ],
+  "5": [
+    { "keyword": "어버이날 선물 추천", "publishBefore": 8, "category": "일상" },
+    { "keyword": "어버이날 감사 편지 쓰는 법", "publishBefore": 8, "category": "소통" },
+    { "keyword": "스승의날 감사 메시지", "publishBefore": 15, "category": "소통" },
+    { "keyword": "가정의 달 가족 활동 추천", "publishBefore": 5, "category": "일상" },
+    { "keyword": "초여름 데이트 코스", "publishBefore": 20, "category": "일상" }
+  ],
+  "6": [
+    { "keyword": "여름 휴가지 추천", "publishBefore": 15, "category": "일상" },
+    { "keyword": "장마철 실내 활동 추천", "publishBefore": 10, "category": "일상" },
+    { "keyword": "여름 휴가 준비물 체크리스트", "publishBefore": 20, "category": "일상" },
+    { "keyword": "에어컨 전기세 절약 팁", "publishBefore": 15, "category": "일상" },
+    { "keyword": "장마철 곰팡이 방지법", "publishBefore": 5, "category": "일상" }
+  ],
+  "7": [
+    { "keyword": "여름 해수욕장 추천", "publishBefore": 10, "category": "일상" },
+    { "keyword": "워케이션 장소 추천", "publishBefore": 15, "category": "일상" },
+    { "keyword": "여름 다이어트 식단", "publishBefore": 5, "category": "일상" },
+    { "keyword": "복날 음식 추천", "publishBefore": 20, "category": "일상" },
+    { "keyword": "여름 캠핑 필수 아이템", "publishBefore": 10, "category": "일상" }
+  ],
+  "8": [
+    { "keyword": "늦여름 국내 여행지", "publishBefore": 10, "category": "일상" },
+    { "keyword": "개학 준비 체크리스트", "publishBefore": 25, "category": "일상" },
+    { "keyword": "가을 패션 미리보기", "publishBefore": 20, "category": "일상" },
+    { "keyword": "추석 선물 추천", "publishBefore": 30, "category": "일상" },
+    { "keyword": "여름 끝물 할인 꿀팁", "publishBefore": 15, "category": "일상" }
+  ],
+  "9": [
+    { "keyword": "추석 선물 추천", "publishBefore": 15, "category": "일상" },
+    { "keyword": "추석 인사말 모음", "publishBefore": 15, "category": "소통" },
+    { "keyword": "가을 단풍 명소 추천", "publishBefore": 25, "category": "일상" },
+    { "keyword": "가을 나들이 코스", "publishBefore": 20, "category": "일상" },
+    { "keyword": "가을 캠핑 추천 장소", "publishBefore": 20, "category": "일상" }
+  ],
+  "10": [
+    { "keyword": "단풍 명소 추천", "publishBefore": 15, "category": "일상" },
+    { "keyword": "핼러윈 코스튬 추천", "publishBefore": 31, "category": "일상" },
+    { "keyword": "핼러윈 파티 아이디어", "publishBefore": 31, "category": "소통" },
+    { "keyword": "가을 독서 추천 도서", "publishBefore": 10, "category": "일상" },
+    { "keyword": "수능 응원 메시지", "publishBefore": 30, "category": "소통" }
+  ],
+  "11": [
+    { "keyword": "수능 응원 메시지 모음", "publishBefore": 15, "category": "소통" },
+    { "keyword": "블랙프라이데이 할인 꿀팁", "publishBefore": 25, "category": "일상" },
+    { "keyword": "연말 파티 준비", "publishBefore": 30, "category": "일상" },
+    { "keyword": "크리스마스 선물 추천", "publishBefore": 30, "category": "일상" },
+    { "keyword": "겨울 코디 추천", "publishBefore": 10, "category": "일상" }
+  ],
+  "12": [
+    { "keyword": "크리스마스 선물 추천", "publishBefore": 25, "category": "일상" },
+    { "keyword": "크리스마스 데이트 코스", "publishBefore": 25, "category": "일상" },
+    { "keyword": "연말 정산 꿀팁", "publishBefore": 20, "category": "일상" },
+    { "keyword": "송년회 장소 추천", "publishBefore": 15, "category": "소통" },
+    { "keyword": "한 해 돌아보기 다이어리", "publishBefore": 30, "category": "심리" }
+  ]
+}

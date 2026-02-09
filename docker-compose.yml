@@ -33,6 +33,7 @@ services:
     depends_on:
       - app
       - grafana
+      - ghost
 
   mongo:
     image: mongo:latest
@@ -130,7 +131,43 @@ services:
       - nginx
       - grafana
 
+  # ============ 블로그 스택 ============
+
+  blog-agent:
+    build: ./blog
+    container_name: blog-agent
+    restart: "no"
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - CLAUDE_API_KEY=${CLAUDE_API_KEY}
+      - NAVER_CLIENT_ID=${NAVER_CLIENT_ID}
+      - NAVER_CLIENT_SECRET=${NAVER_CLIENT_SECRET}
+      - GHOST_ADMIN_API_KEY=${GHOST_ADMIN_API_KEY}
+      - GHOST_URL=http://ghost:2368
+      - REDIS_HOST=redis
+    depends_on:
+      - ghost
+      - redis
+    profiles:
+      - blog-run
+
+  ghost:
+    image: ghost:5-alpine
+    container_name: ghost
+    restart: always
+    ports:
+      - "2368:2368"
+    environment:
+      - url=https://blog.neworbit.co.kr
+      - database__client=sqlite3
+      - NODE_ENV=production
+    volumes:
+      - ghost-data:/var/lib/ghost/content
+    depends_on:
+      - redis
+
 volumes:
   mongo-data:
   prometheus-data:
   grafana-data:
+  ghost-data:

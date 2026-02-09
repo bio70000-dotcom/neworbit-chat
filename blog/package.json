@@ -1,0 +1,17 @@
+{
+  "name": "blog-agent",
+  "version": "1.0.0",
+  "description": "AI 자동 블로그 게시 에이전트 - Ghost CMS",
+  "main": "agent.js",
+  "scripts": {
+    "start": "node agent.js",
+    "test": "echo \"Blog agent test\""
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "form-data": "^4.0.1",
+    "google-trends-api": "^4.9.2",
+    "jsonwebtoken": "^9.0.2",
+    "redis": "^4.7.0"
+  }
+}
