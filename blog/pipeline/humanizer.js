@@ -99,21 +99,29 @@ ${draft.body}`;
   try {
     const raw = await callClaude(systemPrompt, userContent);
 
+    // Step 1: 마크다운 코드블록 제거
     let jsonStr = raw
       .replace(/^```json?\s*/i, '')
       .replace(/```\s*$/i, '')
       .trim();
 
-    // Claude가 JSON 문자열 내부에 제어 문자를 넣는 경우 제거
-    // (탭, 줄바꿈 등을 이스케이프 처리)
-    jsonStr = jsonStr.replace(/[\x00-\x1F\x7F]/g, (ch) => {
-      if (ch === '\n') return '\\n';
-      if (ch === '\r') return '\\r';
-      if (ch === '\t') return '\\t';
-      return '';
-    });
+    // Step 2: JSON 객체 경계 찾기 (Claude가 앞뒤에 설명 텍스트를 넣는 경우 대비)
+    const firstBrace = jsonStr.indexOf('{');
+    const lastBrace = jsonStr.lastIndexOf('}');
+    if (firstBrace === -1 || lastBrace === -1) {
+      throw new Error('Claude 응답에서 JSON을 찾을 수 없습니다');
+    }
+    jsonStr = jsonStr.slice(firstBrace, lastBrace + 1);
 
-    const humanized = JSON.parse(jsonStr);
+    // Step 3: 파싱 시도 (구조적 줄바꿈/탭은 JSON에서 유효)
+    let humanized;
+    try {
+      humanized = JSON.parse(jsonStr);
+    } catch (e1) {
+      // Step 4: 실패 시 문제되는 제어 문자만 제거 (줄바꿈 0x0A, 탭 0x09, CR 0x0D은 보존)
+      const cleaned = jsonStr.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+      humanized = JSON.parse(cleaned);
+    }
 
     if (!humanized.title || !humanized.body) {
       throw new Error('인간화된 제목 또는 본문이 없습니다');
