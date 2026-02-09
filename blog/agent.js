@@ -4,9 +4,10 @@
  * 실행 흐름:
  * 1. 랜덤 딜레이 (0~55분) - 봇 탐지 회피
  * 2. 10% 확률로 스킵 - 하루 2~3편으로 자연스러운 패턴
- * 3. 필수 페이지 확인/생성 (개인정보처리방침, 이용약관, 소개)
- * 4. 글감 1편 선정
- * 5. 리서치 → 초안 → 인간화 → 이미지 → 발행
+ * 3. 시간대 기반 작가 선택 (09시→달산책, 14시→텍스트리, 18시→삐뚤빼뚤)
+ * 4. 필수 페이지 확인/생성 (개인정보처리방침, 이용약관, 소개)
+ * 5. 글감 1편 선정
+ * 6. 리서치 → 초안 → 인간화(작가 페르소나) → 이미지 → 발행(작가 서명)
  *
  * cron으로 하루 3회 실행, 각 실행 시 1편씩 발행
  */
@@ -21,6 +22,7 @@ const { generateImages } = require('./pipeline/imageGenerator');
 const { publish } = require('./pipeline/publisher');
 const { markPublished, disconnect } = require('./utils/dedup');
 const { ensureRequiredPages } = require('./utils/requiredPages');
+const { selectWriter, getWriterById } = require('./writers');
 
 const fs = require('fs');
 const path = require('path');
@@ -46,10 +48,13 @@ async function randomDelay() {
 
 /**
  * 단일 글 처리 파이프라인
+ * @param {Object} topic - 선정된 글감
+ * @param {Object} writer - 선택된 작가
  */
-async function processOne(topic) {
+async function processOne(topic, writer) {
   console.log(`\n${'='.repeat(60)}`);
   console.log(`[글] 시작: "${topic.keyword}" (${topic.source})`);
+  console.log(`[글] 작가: ${writer.nickname}`);
   console.log('='.repeat(60));
 
   try {
@@ -61,11 +66,11 @@ async function processOne(topic) {
     console.log('[글] 2/5 초안 생성 중 (Gemini Flash)...');
     const draft = await writeDraft(topic, researchData);
 
-    // Step 3: 인간화
-    console.log('[글] 3/5 인간화 중 (Claude Sonnet)...');
+    // Step 3: 인간화 (작가 페르소나 적용)
+    console.log(`[글] 3/5 인간화 중 (Claude Sonnet → ${writer.nickname})...`);
     let finalPost;
     try {
-      finalPost = await humanize(draft);
+      finalPost = await humanize(draft, writer);
     } catch (e) {
       console.warn(`[글] 인간화 실패, 초안 사용: ${e.message}`);
       finalPost = draft;
@@ -83,8 +88,8 @@ async function processOne(topic) {
       console.warn(`[글] 이미지 생성 실패 (이미지 없이 발행): ${e.message}`);
     }
 
-    // Step 5: Ghost 발행
-    console.log('[글] 5/5 Ghost 발행 중...');
+    // Step 5: Ghost 발행 (작가 지정)
+    console.log(`[글] 5/5 Ghost 발행 중 (${writer.nickname})...`);
     const published = await publish({
       title: finalPost.title,
       body: finalPost.body,
@@ -92,18 +97,19 @@ async function processOne(topic) {
       tags: finalPost.tags,
       thumbnailBuffer,
       bodyImageBuffers,
+      writer,
     });
 
     // 발행 성공 → 중복 방지 기록
     await markPublished(topic.keyword);
 
-    console.log(`[글] 발행 성공! "${published?.title}"`);
+    console.log(`[글] 발행 성공! "${published?.title}" by ${writer.nickname}`);
     console.log(`[글] URL: ${published?.url || 'N/A'}`);
 
-    return { success: true, title: finalPost.title, url: published?.url };
+    return { success: true, title: finalPost.title, url: published?.url, writer: writer.nickname };
   } catch (e) {
     console.error(`[글] 실패: ${e.message}`);
-    return { success: false, keyword: topic.keyword, error: e.message };
+    return { success: false, keyword: topic.keyword, error: e.message, writer: writer.nickname };
   }
 }
 
@@ -144,6 +150,15 @@ async function main() {
       return;
     }
 
+    // 작가 선택 (--writer=id 플래그로 수동 지정 가능)
+    const writerFlag = process.argv.find((a) => a.startsWith('--writer='));
+    const writer = writerFlag
+      ? getWriterById(writerFlag.split('=')[1])
+      : selectWriter();
+
+    console.log(`\n[Agent] 오늘의 작가: ${writer.nickname}`);
+    console.log(`[Agent] 소개: ${writer.bio}`);
+
     // AdSense 필수 페이지 확인/생성 (최초 1회)
     console.log('\n[Step] 필수 페이지 확인 중...');
     try {
@@ -163,13 +178,14 @@ async function main() {
 
     // 1편만 처리 (cron 3회 x 1편 = 하루 3편)
     const topic = topics[0];
-    const result = await processOne(topic);
+    const result = await processOne(topic, writer);
 
     // 결과 요약
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
 
     console.log('\n' + '▓'.repeat(60));
     console.log('  Blog Agent 완료');
+    console.log(`  작가: ${result.writer}`);
     console.log(`  결과: ${result.success ? '성공' : '실패'}`);
     console.log(`  소요시간: ${elapsed}초`);
     if (result.success) {

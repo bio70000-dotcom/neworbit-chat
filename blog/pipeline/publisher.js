@@ -1,6 +1,7 @@
 /**
  * Ghost 발행 모듈
  * Ghost Admin API를 사용하여 블로그 글 + 이미지 발행
+ * 작가별 저자(author) 지정 지원
  */
 
 const jwt = require('jsonwebtoken');
@@ -116,9 +117,56 @@ async function uploadImage(imageBuffer, filename) {
   }
 }
 
+// ── 작가 (Author) 관리 ──────────────────────────────
+
 /**
- * Ghost에 블로그 글 발행
- * @param {Object} post - { title, body, metaDescription, tags, thumbnailBuffer?, bodyImageBuffers? }
+ * 기존 Ghost 스태프 목록 가져오기
+ */
+async function getGhostUsers() {
+  try {
+    const data = await ghostRequest('/users/?limit=all');
+    return data?.users || [];
+  } catch (e) {
+    console.warn(`[Publisher] 스태프 목록 조회 실패: ${e.message}`);
+    return [];
+  }
+}
+
+/**
+ * Ghost 스태프(작가) 생성 또는 기존 조회
+ * Ghost는 invite 방식이라 직접 생성이 어려울 수 있음 → slug로 조회
+ */
+async function findOrGetAuthor(writer) {
+  // 캐시된 Ghost author ID가 있으면 바로 반환
+  if (writer.ghostAuthorId) return writer.ghostAuthorId;
+
+  const users = await getGhostUsers();
+
+  // slug 또는 이름으로 작가 찾기
+  const found = users.find(
+    (u) => u.slug === writer.id || u.name === writer.nickname
+  );
+
+  if (found) {
+    console.log(`[Publisher] 작가 발견: ${found.name} (${found.id})`);
+    writer.ghostAuthorId = found.id;
+    return found.id;
+  }
+
+  // 기존 작가가 없으면 기본 작가(Owner) 사용하고 nickname으로 표시
+  const owner = users.find((u) => u.roles?.some((r) => r.name === 'Owner'));
+  if (owner) {
+    console.log(`[Publisher] 작가 "${writer.nickname}" 미등록 → Owner(${owner.name}) 사용`);
+    return owner.id;
+  }
+
+  console.log('[Publisher] Owner 찾기 실패 → 기본 작가 사용');
+  return null;
+}
+
+/**
+ * Ghost에 블로그 글 발행 (작가 지정 포함)
+ * @param {Object} post - { title, body, metaDescription, tags, thumbnailBuffer?, bodyImageBuffers?, writer? }
  * @returns {Promise<Object>} 발행된 글 정보
  */
 async function publish(post) {
@@ -157,10 +205,28 @@ async function publish(post) {
     }
   }
 
-  // 3. 태그 생성/조회
+  // 3. 작가 지정
+  let authors = undefined;
+  if (post.writer) {
+    try {
+      const authorId = await findOrGetAuthor(post.writer);
+      if (authorId) {
+        authors = [{ id: authorId }];
+      }
+    } catch (e) {
+      console.warn(`[Publisher] 작가 지정 실패: ${e.message}`);
+    }
+  }
+
+  // 4. 태그 생성/조회
   const tags = (post.tags || []).map((name) => ({ name }));
 
-  // 4. Ghost Admin API로 글 발행
+  // 5. 작가 서명 추가 (본문 끝에 작가 정보 삽입)
+  if (post.writer) {
+    bodyHtml += `\n<hr />\n<p><em>글쓴이: ${post.writer.nickname} · ${post.writer.bio}</em></p>`;
+  }
+
+  // 6. Ghost Admin API로 글 발행
   const ghostPost = {
     posts: [
       {
@@ -171,6 +237,8 @@ async function publish(post) {
         meta_title: post.title,
         meta_description: post.metaDescription || '',
         feature_image: featureImage,
+        // 작가 지정
+        ...(authors && { authors }),
         // Open Graph
         og_title: post.title,
         og_description: post.metaDescription || '',
@@ -191,7 +259,8 @@ async function publish(post) {
     });
 
     const published = result?.posts?.[0];
-    console.log(`[Publisher] 발행 완료: "${published?.title}" (${published?.url})`);
+    const writerName = post.writer?.nickname || '기본';
+    console.log(`[Publisher] 발행 완료: "${published?.title}" by ${writerName} (${published?.url})`);
     return published;
   } catch (e) {
     console.error(`[Publisher] 발행 실패: ${e.message}`);
@@ -199,4 +268,4 @@ async function publish(post) {
   }
 }
 
-module.exports = { publish, uploadImage };
+module.exports = { publish, uploadImage, ghostRequest, getGhostUsers };

@@ -1,60 +1,11 @@
 /**
  * 인간화 모듈
  * Claude Sonnet API를 사용하여 AI 초안을 사람처럼 재가공
- * 3가지 블로거 페르소나 중 랜덤 선택으로 문체 다양성 확보
+ * writers.js에서 지정된 작가 페르소나 적용
  */
 
 const CLAUDE_API_URL = 'https://api.anthropic.com/v1/messages';
 const CLAUDE_MODEL = 'claude-sonnet-4-20250514';
-
-// ── 블로거 페르소나 3종 ──────────────────────────────
-
-const PERSONAS = [
-  {
-    name: '수진 (20대 후반 여성)',
-    style: `너는 28살 여성 블로거 "수진"이야. 가볍고 친근한 말투가 특징이야.
-## 문체 규칙
-1. "~거든요", "~인 거 있죠?", "~잖아요" 이런 말투 위주
-2. 중간중간 "솔직히", "진짜", "아 근데" 같은 감탄사 자연스럽게
-3. 가끔 짧은 문장으로 끊기. "진짜임." "이건 좀 별로." 이런 식
-4. 본인 경험 삽입: "저도 이거 써봤는데", "작년에 해봤거든요"
-5. 괄호 코멘트 가끔 사용 (이건 좀 개인적인 의견인데...)
-6. 이모티콘 없이. "ㅋㅋ" 1~2번만 자연스러운 곳에
-7. 도입은 말 거는 느낌: "혹시 ~해보신 적 있어요?", "요즘 ~하는 분들 많더라고요"
-8. 결론은 가볍게 마무리`,
-  },
-  {
-    name: '민수 (30대 초반 남성)',
-    style: `너는 32살 남성 블로거 "민수"야. 약간 진지하면서도 편한 말투가 특징이야.
-## 문체 규칙
-1. "~더라고요", "~인 것 같아요", "개인적으로는" 이런 표현 위주
-2. 정보 전달 시 "참고로", "덧붙이자면", "한 가지 팁을 드리자면" 사용
-3. 문장이 좀 더 길고 설명적. 하지만 딱딱하진 않게
-4. 본인 경험 삽입: "개인적으로 써본 결과", "제 경험상", "주변에서 많이 추천받았는데"
-5. 가끔 독자에게 질문: "어떻게 생각하시나요?", "여러분은 어떠세요?"
-6. "ㅋㅋ"는 안 쓰고, 대신 유머가 있으면 담백하게
-7. 도입은 상황 설명: "요즘 ~가 화제인데요", "최근 ~를 알아보다가"
-8. 결론은 요약형: "정리하자면", "핵심만 말씀드리면"`,
-  },
-  {
-    name: '하은 (20대 중반)',
-    style: `너는 25살 블로거 "하은"이야. 유머러스하고 솔직한 말투가 특징이야.
-## 문체 규칙
-1. "~인 듯", "~아닌가", "솔직히 좀 웃김" 이런 말투
-2. 과장 표현 가끔: "미쳤음", "이건 진짜 사기", "인생템 등극"
-3. 문장 길이 완전 불규칙. 길게 쓰다가 "ㄹㅇ." 한 단어로 끝내기도
-4. 본인 경험이 좀 더 과장됨: "이거 안 해본 사람 없지?", "나만 몰랐나..."
-5. 괄호 사용 많음 (근데 이건 내 취향일 수도) (아닌가)
-6. "ㅋㅋ" 2~3번 ok. "ㅎㅎ"도 가끔
-7. 도입은 직구: "아 이거 얘기 안 하면 섭섭하지", "여러분 이거 알아요?"
-8. 결론은 짧게: "끝!", "암튼 강추", "해보면 앎"`,
-  },
-];
-
-function pickPersona() {
-  const idx = Math.floor(Math.random() * PERSONAS.length);
-  return PERSONAS[idx];
-}
 
 // ── Claude API ──────────────────────────────────────
 
@@ -100,13 +51,14 @@ async function callClaude(systemPrompt, userContent) {
 // ── 인간화 ──────────────────────────────────────
 
 /**
- * AI 초안을 인간적인 블로그 글로 재가공 (랜덤 페르소나)
+ * AI 초안을 인간적인 블로그 글로 재가공 (지정된 작가 페르소나 적용)
  * @param {Object} draft - { title, metaDescription, body, tags }
- * @returns {Promise<Object>} 인간화된 { title, metaDescription, body, tags }
+ * @param {Object} writer - writers.js에서 선택된 작가 객체
+ * @returns {Promise<Object>} 인간화된 { title, metaDescription, body, tags, writerNickname }
  */
-async function humanize(draft) {
-  const persona = pickPersona();
-  console.log(`[Humanizer] 페르소나 선택: ${persona.name}`);
+async function humanize(draft, writer) {
+  const persona = writer.persona;
+  console.log(`[Humanizer] 작가: ${persona.name}`);
 
   const systemPrompt = `${persona.style}
 
@@ -160,11 +112,13 @@ ${draft.body}`;
 
     humanized.metaDescription = humanized.metaDescription || draft.metaDescription;
     humanized.tags = humanized.tags || draft.tags;
+    humanized.writerNickname = persona.name;
 
-    console.log(`[Humanizer] 인간화 완료: "${humanized.title}" (${humanized.body.length}자)`);
+    console.log(`[Humanizer] 인간화 완료: "${humanized.title}" (${humanized.body.length}자) by ${persona.name}`);
     return humanized;
   } catch (e) {
     console.error(`[Humanizer] 인간화 실패, 원본 초안 사용: ${e.message}`);
+    draft.writerNickname = persona.name;
     return draft;
   }
 }
