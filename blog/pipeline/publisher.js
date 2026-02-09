@@ -7,7 +7,6 @@
 const jwt = require('jsonwebtoken');
 const fs = require('fs');
 const path = require('path');
-const FormData = require('form-data');
 
 const GHOST_URL = process.env.GHOST_URL || 'http://ghost:2368';
 
@@ -74,29 +73,20 @@ async function uploadImage(imageBuffer, filename) {
   const token = createGhostToken();
   const url = `${GHOST_URL}/ghost/api/admin/images/upload/`;
 
-  // 임시 파일로 저장 후 업로드
-  const tmpPath = path.join(__dirname, '..', 'tmp', filename);
-  const tmpDir = path.dirname(tmpPath);
-  if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
-  fs.writeFileSync(tmpPath, imageBuffer);
-
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15000);
 
   try {
-    // Node.js 18+ FormData with file upload
+    // Node.js 20+ native FormData + Blob (npm form-data와 native fetch 비호환 해결)
+    const blob = new Blob([imageBuffer], { type: 'image/png' });
     const formData = new FormData();
-    formData.append('file', fs.createReadStream(tmpPath), {
-      filename,
-      contentType: 'image/png',
-    });
+    formData.append('file', blob, filename);
     formData.append('purpose', 'image');
 
     const res = await fetch(url, {
       method: 'POST',
       headers: {
         Authorization: `Ghost ${token}`,
-        ...formData.getHeaders(),
       },
       body: formData,
       signal: controller.signal,
@@ -111,8 +101,6 @@ async function uploadImage(imageBuffer, filename) {
     return data?.images?.[0]?.url || '';
   } finally {
     clearTimeout(timeout);
-    // 임시 파일 정리
-    try { fs.unlinkSync(tmpPath); } catch {}
   }
 }
 

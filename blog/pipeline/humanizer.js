@@ -5,7 +5,7 @@
  */
 
 const CLAUDE_API_URL = 'https://api.anthropic.com/v1/messages';
-const CLAUDE_MODEL = 'claude-sonnet-4-5-20250514';
+const CLAUDE_MODEL = 'claude-sonnet-4-5-20250929';
 
 // ── Claude API ──────────────────────────────────────
 
