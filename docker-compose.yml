@@ -161,12 +161,21 @@ services:
       - url=https://blog.neworbit.co.kr
       - database__client=sqlite3
       - database__connection__filename=/var/lib/ghost/content/data/ghost.db
-      - mail__transport=Direct
+      - mail__transport=SMTP
+      - mail__options__host=mailpit
+      - mail__options__port=1025
+      - mail__from=noreply@neworbit.co.kr
       - NODE_ENV=production
     volumes:
       - ghost-data:/var/lib/ghost/content
     depends_on:
       - redis
+      - mailpit
+
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: mailpit
+    restart: always
 
 volumes:
   mongo-data:
