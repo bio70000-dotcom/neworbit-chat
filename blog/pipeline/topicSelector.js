@@ -3,17 +3,15 @@
  * 작가별 전문 분야에 맞는 주제를 선정
  *
  * 소스 선택 확률:
- *  - Google Trends: 35%
- *  - 네이버 뉴스: 35%
- *  - 시즌 캘린더: 20%
- *  - 에버그린: 10%
+ *  - 시즌 캘린더: 40%
+ *  - 네이버 뉴스: 30%
+ *  - Google Trends: 30%
  */
 
 const calendar = require('../calendar.json');
-const evergreen = require('../evergreen.json');
 const { getRelevantTrends } = require('../utils/googleTrends');
 const { getNaverNewsTopics } = require('../utils/naverTopics');
-const { isDuplicate, getEvergreenIndex, incrementEvergreenIndex } = require('../utils/dedup');
+const { isDuplicate } = require('../utils/dedup');
 
 // ── 작가별 카테고리 → 검색 키워드 매핑 ──────────────────
 
@@ -35,45 +33,6 @@ const WRITER_SEARCH_KEYWORDS = {
   ],
 };
 
-// ── 에버그린 주제 ↔ 작가 매칭 ──────────────────
-
-const EVERGREEN_WRITER_MAP = {
-  // 달산책 (라이프스타일, 감성, 인간관계)
-  '심심할 때 할 것 추천': 'dalsanchek',
-  '외로울 때 극복하는 방법': 'dalsanchek',
-  '혼자 시간 보내기 좋은 방법': 'dalsanchek',
-  '대화 잘 하는 법': 'dalsanchek',
-  '인간관계 고민 해결법': 'dalsanchek',
-  '번아웃 극복하는 방법': 'dalsanchek',
-  '나만의 힐링 루틴 만들기': 'dalsanchek',
-  '주말에 혼자 할 수 있는 것': 'dalsanchek',
-  '좋은 습관 만들기': 'dalsanchek',
-  '독서 습관 들이는 법': 'dalsanchek',
-  '자존감 높이는 방법': 'dalsanchek',
-  '감성 글귀 모음': 'dalsanchek',
-
-  // 텍스트리 (IT, 테크, 생산성, 경제)
-  'AI 챗봇 활용법': 'textree',
-  '무료 어플 추천 모음': 'textree',
-  '효과적인 메모 방법': 'textree',
-  '직장인 점심시간 활용법': 'textree',
-  '집에서 할 수 있는 취미 추천': 'textree',
-
-  // 삐뚤빼뚤 (트렌드, 엔터, MBTI, 먹거리)
-  'MBTI 유형별 대화 스타일': 'bbittul',
-  '익명 대화의 매력과 장점': 'bbittul',
-  '스트레스 해소법 모음': 'bbittul',
-  '낯선 사람과 대화하는 팁': 'bbittul',
-  '온라인 친구 만들기': 'bbittul',
-  '자취생 꿀팁 모음': 'bbittul',
-  '잠 못 잘 때 하면 좋은 것': 'bbittul',
-  '고민 상담 받는 법': 'bbittul',
-  '소개팅 대화 주제 추천': 'bbittul',
-  'MZ세대 트렌드 모음': 'bbittul',
-  '혼밥 맛집 찾는 팁': 'bbittul',
-  'SNS 피로감 극복법': 'bbittul',
-  '친구 사귀기 어려운 이유': 'bbittul',
-};
 
 /**
  * 시즌 캘린더에서 작가에 맞는 주제 찾기
@@ -101,33 +60,6 @@ function getSeasonalTopics(writerId) {
       category: event.category,
       source: 'seasonal',
     }));
-}
-
-/**
- * 에버그린 풀에서 작가에 맞는 다음 주제 가져오기
- */
-async function getNextEvergreen(writerId) {
-  const topics = evergreen.topics;
-
-  // 작가에 맞는 에버그린 주제만 필터
-  const writerTopics = topics.filter((t) => {
-    const assigned = EVERGREEN_WRITER_MAP[t.keyword];
-    return assigned === writerId || !assigned; // 매핑된 것 또는 미배정
-  });
-
-  if (writerTopics.length === 0) {
-    // fallback: 전체 풀에서
-    const idx = await getEvergreenIndex();
-    const topic = topics[idx % topics.length];
-    await incrementEvergreenIndex(topics.length);
-    return { keyword: topic.keyword, category: topic.category, cta: topic.cta, source: 'evergreen' };
-  }
-
-  const idx = await getEvergreenIndex();
-  const topic = writerTopics[idx % writerTopics.length];
-  await incrementEvergreenIndex(writerTopics.length);
-
-  return { keyword: topic.keyword, category: topic.category, cta: topic.cta, source: 'evergreen' };
 }
 
 /**
@@ -204,9 +136,6 @@ async function trySourcesInOrder(sources, writerId) {
         }
         break;
       }
-      case 'evergreen':
-        topic = await getNextEvergreen(writerId);
-        break;
     }
 
     if (topic) {
@@ -215,9 +144,30 @@ async function trySourcesInOrder(sources, writerId) {
     }
   }
 
-  const eg = await getNextEvergreen(writerId);
-  console.log(`[TopicSelector] 선정 (fallback): [${eg.source}] "${eg.keyword}"`);
-  return eg;
+  // 최종 fallback: 시즌 → 네이버 → 트렌드 순환
+  console.warn('[TopicSelector] 모든 소스 실패, fallback 재시도');
+  const fallbackOrder = ['seasonal', 'naver_news', 'google_trends'];
+  for (const fb of fallbackOrder) {
+    let topic = null;
+    if (fb === 'seasonal') {
+      const seasonal = getSeasonalTopics(writerId);
+      if (seasonal.length > 0) topic = seasonal[0];
+    } else if (fb === 'naver_news') {
+      topic = await getNaverTopic(writerId);
+    } else {
+      topic = await getTrendTopic(writerId);
+    }
+    if (topic) {
+      console.log(`[TopicSelector] 선정 (fallback): [${topic.source}] "${topic.keyword}"`);
+      return topic;
+    }
+  }
+
+  // 정말 아무것도 없을 때 - 작가 카테고리 기반 기본 주제
+  const writerKws = WRITER_SEARCH_KEYWORDS[writerId] || ['라이프스타일'];
+  const defaultKeyword = `${new Date().getFullYear()}년 ${writerKws[0]} 트렌드`;
+  console.log(`[TopicSelector] 선정 (기본): "${defaultKeyword}"`);
+  return { keyword: defaultKeyword, category: writerKws[0], source: 'default' };
 }
 
 /**
@@ -231,18 +181,15 @@ async function selectTopics(writer) {
   let primarySource;
   let fallbackSources;
 
-  if (roll < 0.35) {
-    primarySource = 'google_trends';
-    fallbackSources = ['google_trends', 'naver_news', 'seasonal', 'evergreen'];
+  if (roll < 0.40) {
+    primarySource = 'seasonal';
+    fallbackSources = ['seasonal', 'naver_news', 'google_trends'];
   } else if (roll < 0.70) {
     primarySource = 'naver_news';
-    fallbackSources = ['naver_news', 'google_trends', 'seasonal', 'evergreen'];
-  } else if (roll < 0.90) {
-    primarySource = 'seasonal';
-    fallbackSources = ['seasonal', 'google_trends', 'naver_news', 'evergreen'];
+    fallbackSources = ['naver_news', 'google_trends', 'seasonal'];
   } else {
-    primarySource = 'evergreen';
-    fallbackSources = ['evergreen'];
+    primarySource = 'google_trends';
+    fallbackSources = ['google_trends', 'naver_news', 'seasonal'];
   }
 
   console.log(`[TopicSelector] 작가: ${writer?.nickname || writerId}, 소스: ${primarySource} (roll: ${roll.toFixed(2)})`);

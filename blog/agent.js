@@ -1,15 +1,9 @@
 /**
  * Blog Agent - AI 자동 게시 에이전트
  *
- * 실행 흐름:
- * 1. 랜덤 딜레이 (0~55분) - 봇 탐지 회피
- * 2. 10% 확률로 스킵 - 하루 2~3편으로 자연스러운 패턴
- * 3. 시간대 기반 작가 선택 (09시→달산책, 14시→텍스트리, 18시→삐뚤빼뚤)
- * 4. 필수 페이지 확인/생성 (개인정보처리방침, 이용약관, 소개)
- * 5. 글감 1편 선정
- * 6. 리서치 → 초안 → 인간화(작가 페르소나) → 이미지 → 발행(작가 서명)
- *
- * cron으로 하루 3회 실행, 각 실행 시 1편씩 발행
+ * 두 가지 모드로 동작:
+ * 1. scheduler.js에서 호출: processOne()을 import하여 사용
+ * 2. CLI 직접 실행: node agent.js --now --writer dalsanchek (수동 테스트)
  */
 
 require('dotenv').config();
@@ -50,8 +44,9 @@ async function randomDelay() {
  * 단일 글 처리 파이프라인
  * @param {Object} topic - 선정된 글감
  * @param {Object} writer - 선택된 작가
+ * @param {Object} options - 추가 옵션 { userImageBuffers?: Buffer[] }
  */
-async function processOne(topic, writer) {
+async function processOne(topic, writer, options = {}) {
   console.log(`\n${'='.repeat(60)}`);
   console.log(`[글] 시작: "${topic.keyword}" (${topic.source})`);
   console.log(`[글] 작가: ${writer.nickname}`);
@@ -76,18 +71,35 @@ async function processOne(topic, writer) {
       finalPost = draft;
     }
 
-    // Step 4: 이미지 생성 (AI + Pexels 실사)
-    console.log('[글] 4/5 이미지 생성 중 (AI + Pexels)...');
+    // Step 4: 이미지 생성 (사용자 이미지 > AI + Pexels 실사)
+    console.log('[글] 4/5 이미지 준비 중...');
     let thumbnailBuffer = null;
     let bodyImageBuffers = [];
     let pexelsImages = [];
+    const userImageBuffers = options.userImageBuffers || [];
+
+    if (userImageBuffers.length > 0) {
+      console.log(`[글] 사용자 제공 이미지 ${userImageBuffers.length}장 사용`);
+    }
+
     try {
       const images = await generateImages(finalPost.title, topic.keyword, finalPost.body);
       thumbnailBuffer = images.thumbnail;
-      bodyImageBuffers = images.bodyImages;
-      pexelsImages = images.pexelsImages || [];
+      // 사용자 이미지가 있으면 AI 본문 이미지 대신 사용
+      if (userImageBuffers.length > 0) {
+        bodyImageBuffers = userImageBuffers;
+        // Pexels도 사용자 이미지로 대체 (충분하면)
+        pexelsImages = userImageBuffers.length >= 3 ? [] : (images.pexelsImages || []);
+      } else {
+        bodyImageBuffers = images.bodyImages;
+        pexelsImages = images.pexelsImages || [];
+      }
     } catch (e) {
-      console.warn(`[글] 이미지 생성 실패 (이미지 없이 발행): ${e.message}`);
+      console.warn(`[글] AI 이미지 생성 실패: ${e.message}`);
+      // 사용자 이미지라도 있으면 사용
+      if (userImageBuffers.length > 0) {
+        bodyImageBuffers = userImageBuffers;
+      }
     }
 
     // Step 5: Ghost 발행 (작가 지정)
@@ -216,4 +228,39 @@ async function main() {
   }
 }
 
-main();
+/**
+ * 에이전트 초기화 (scheduler에서 호출)
+ */
+async function initAgent() {
+  const required = ['GEMINI_API_KEY', 'GHOST_ADMIN_API_KEY'];
+  const missing = required.filter((k) => !process.env[k]);
+  if (missing.length > 0) {
+    throw new Error(`필수 환경변수 누락: ${missing.join(', ')}`);
+  }
+
+  if (!process.env.CLAUDE_API_KEY) {
+    console.warn('CLAUDE_API_KEY 없음 - 인간화 단계를 건너뜁니다');
+  }
+
+  // 필수 페이지 확인 (최초 1회)
+  try {
+    await ensureRequiredPages();
+  } catch (e) {
+    console.warn(`[Agent] 필수 페이지 확인 실패: ${e.message}`);
+  }
+}
+
+/**
+ * 에이전트 정리 (scheduler에서 호출)
+ */
+async function cleanupAgent() {
+  cleanupTmp();
+  await disconnect();
+}
+
+// CLI 직접 실행 시에만 main() 호출
+if (require.main === module) {
+  main();
+}
+
+module.exports = { processOne, initAgent, cleanupAgent };
