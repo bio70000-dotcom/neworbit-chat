@@ -77,10 +77,12 @@ async function uploadImage(imageBuffer, filename) {
   const timeout = setTimeout(() => controller.abort(), 15000);
 
   try {
-    // Node.js 20+ native FormData + Blob (npm form-data와 native fetch 비호환 해결)
-    const blob = new Blob([imageBuffer], { type: 'image/png' });
+    // Node.js 20+ native FormData + Blob
+    // 파일명을 .jpg로 변경하여 Ghost가 JPEG로 인식하게 함
+    const jpgFilename = filename.replace(/\.png$/i, '.jpg');
+    const blob = new Blob([imageBuffer], { type: 'image/jpeg' });
     const formData = new FormData();
-    formData.append('file', blob, filename);
+    formData.append('file', blob, jpgFilename);
     formData.append('purpose', 'image');
 
     const res = await fetch(url, {
@@ -214,6 +216,7 @@ async function publish(post) {
   }
 
   // 6. Ghost Admin API로 글 발행
+  // source: 'html' 필수! 이것이 없으면 Ghost가 html 필드를 무시하고 빈 본문이 됨
   const ghostPost = {
     posts: [
       {
@@ -239,7 +242,8 @@ async function publish(post) {
   };
 
   try {
-    const result = await ghostRequest('/posts/', {
+    // source=html 파라미터로 Ghost에게 HTML 변환을 요청
+    const result = await ghostRequest('/posts/?source=html', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(ghostPost),
