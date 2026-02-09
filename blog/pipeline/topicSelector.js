@@ -1,17 +1,20 @@
 /**
  * 글감 선정 모듈
- * 시즌 캘린더 + Google Trends + 에버그린 주제를 조합하여
- * 1회 실행 시 1편의 글감을 선정 (cron 3회 x 1편 = 하루 3편)
+ * Google Trends + 네이버 뉴스 + 시즌 캘린더 + 에버그린 주제를 조합
  *
  * 소스 선택 확률:
- *  - 시즌 캘린더: 40% (해당 시기 이벤트가 있을 때)
- *  - 트렌드: 30%
- *  - 에버그린: 30% (또는 시즌/트렌드 없을 때 fallback)
+ *  - Google Trends: 35%
+ *  - 네이버 뉴스: 35%
+ *  - 시즌 캘린더: 20%
+ *  - 에버그린: 10%
+ *
+ * 각 소스 실패 시 다음 소스로 fallback
  */
 
 const calendar = require('../calendar.json');
 const evergreen = require('../evergreen.json');
 const { getRelevantTrends } = require('../utils/googleTrends');
+const { getNaverNewsTopics } = require('../utils/naverTopics');
 const { isDuplicate, getEvergreenIndex, incrementEvergreenIndex } = require('../utils/dedup');
 
 /**
@@ -56,7 +59,7 @@ async function getNextEvergreen() {
 }
 
 /**
- * Google Trends에서 관련 트렌드 가져오기
+ * Google Trends에서 중복 아닌 트렌드 하나 가져오기
  */
 async function getTrendTopic() {
   try {
@@ -66,19 +69,12 @@ async function getTrendTopic() {
     for (const keyword of trends) {
       const dup = await isDuplicate(keyword);
       if (!dup) {
-        return {
-          keyword,
-          category: 'trending',
-          source: 'google_trends',
-        };
+        return { keyword, category: 'trending', source: 'google_trends' };
       }
     }
 
-    return {
-      keyword: trends[0],
-      category: 'trending',
-      source: 'google_trends',
-    };
+    // 모두 중복이면 첫 번째 반환
+    return { keyword: trends[0], category: 'trending', source: 'google_trends' };
   } catch (e) {
     console.warn(`[TopicSelector] 트렌드 수집 실패: ${e.message}`);
     return null;
@@ -86,40 +82,101 @@ async function getTrendTopic() {
 }
 
 /**
- * 1편의 글감 선정 (랜덤 소스 선택)
- * @returns {Promise<Array>} 1편짜리 배열
+ * 네이버 뉴스에서 중복 아닌 주제 하나 가져오기
  */
-async function selectTopics() {
-  // 소스 우선순위를 랜덤하게 결정
-  const roll = Math.random();
+async function getNaverTopic() {
+  try {
+    const topics = await getNaverNewsTopics();
+    if (topics.length === 0) return null;
 
-  // 40%: 시즌 캘린더 우선
-  if (roll < 0.4) {
-    const seasonal = getSeasonalTopics();
-    for (const s of seasonal) {
-      const dup = await isDuplicate(s.keyword);
+    for (const topic of topics) {
+      const dup = await isDuplicate(topic.keyword);
       if (!dup) {
-        console.log(`[TopicSelector] 선정: [${s.source}] "${s.keyword}"`);
-        return [s];
+        return topic;
       }
     }
-    // 시즌 이벤트 없으면 에버그린 fallback
-  }
 
-  // 30%: 트렌드 우선
-  if (roll < 0.7) {
-    const trend = await getTrendTopic();
-    if (trend) {
-      console.log(`[TopicSelector] 선정: [${trend.source}] "${trend.keyword}"`);
-      return [trend];
+    // 모두 중복이면 첫 번째 반환
+    return topics[0];
+  } catch (e) {
+    console.warn(`[TopicSelector] 네이버 뉴스 주제 수집 실패: ${e.message}`);
+    return null;
+  }
+}
+
+/**
+ * 소스 목록에서 순서대로 시도하여 주제 하나 선정
+ * @param {Array<string>} sources - 시도할 소스 순서
+ */
+async function trySourcesInOrder(sources) {
+  for (const source of sources) {
+    let topic = null;
+
+    switch (source) {
+      case 'google_trends':
+        topic = await getTrendTopic();
+        break;
+      case 'naver_news':
+        topic = await getNaverTopic();
+        break;
+      case 'seasonal': {
+        const seasonal = getSeasonalTopics();
+        for (const s of seasonal) {
+          const dup = await isDuplicate(s.keyword);
+          if (!dup) { topic = s; break; }
+        }
+        break;
+      }
+      case 'evergreen':
+        topic = await getNextEvergreen();
+        break;
     }
-    // 트렌드 실패하면 에버그린 fallback
+
+    if (topic) {
+      console.log(`[TopicSelector] 선정: [${topic.source}] "${topic.keyword}"`);
+      return topic;
+    }
   }
 
-  // 30% 또는 fallback: 에버그린
+  // 최종 fallback: 에버그린
   const eg = await getNextEvergreen();
-  console.log(`[TopicSelector] 선정: [${eg.source}] "${eg.keyword}"`);
-  return [eg];
+  console.log(`[TopicSelector] 선정 (fallback): [${eg.source}] "${eg.keyword}"`);
+  return eg;
+}
+
+/**
+ * 1편의 글감 선정
+ * Google Trends 35% / 네이버뉴스 35% / 시즌 20% / 에버그린 10%
+ * 선택된 소스가 실패하면 나머지 소스를 순서대로 시도
+ */
+async function selectTopics() {
+  const roll = Math.random();
+
+  let primarySource;
+  let fallbackSources;
+
+  if (roll < 0.35) {
+    // 35%: Google Trends 우선
+    primarySource = 'google_trends';
+    fallbackSources = ['google_trends', 'naver_news', 'seasonal', 'evergreen'];
+  } else if (roll < 0.70) {
+    // 35%: 네이버 뉴스 우선
+    primarySource = 'naver_news';
+    fallbackSources = ['naver_news', 'google_trends', 'seasonal', 'evergreen'];
+  } else if (roll < 0.90) {
+    // 20%: 시즌 캘린더 우선
+    primarySource = 'seasonal';
+    fallbackSources = ['seasonal', 'google_trends', 'naver_news', 'evergreen'];
+  } else {
+    // 10%: 에버그린
+    primarySource = 'evergreen';
+    fallbackSources = ['evergreen'];
+  }
+
+  console.log(`[TopicSelector] 소스 선택: ${primarySource} (roll: ${roll.toFixed(2)})`);
+
+  const topic = await trySourcesInOrder(fallbackSources);
+  return [topic];
 }
 
 module.exports = { selectTopics };
