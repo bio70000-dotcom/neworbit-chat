@@ -1,5 +1,5 @@
 /**
- * Ghost API 연결 테스트
+ * Ghost API 연결 테스트 (상세 디버깅)
  */
 require('dotenv').config();
 const jwt = require('jsonwebtoken');
@@ -7,9 +7,9 @@ const jwt = require('jsonwebtoken');
 const GHOST_URL = process.env.GHOST_URL || 'http://ghost:2368';
 const apiKey = process.env.GHOST_ADMIN_API_KEY;
 
-console.log('=== Ghost API 테스트 ===');
+console.log('=== Ghost API 테스트 (v2) ===');
 console.log('GHOST_URL:', GHOST_URL);
-console.log('API Key:', apiKey ? `${apiKey.slice(0, 20)}...` : 'MISSING');
+console.log('API Key 전체:', apiKey);
 
 if (!apiKey) {
   console.error('GHOST_ADMIN_API_KEY가 없습니다');
@@ -18,9 +18,10 @@ if (!apiKey) {
 
 const [id, secret] = apiKey.split(':');
 console.log('Key ID:', id);
+console.log('Secret:', secret);
 console.log('Secret length:', secret?.length);
 
-// JWT 생성 (Ghost 공식 문서 형식)
+// JWT 생성
 const token = jwt.sign({}, Buffer.from(secret, 'hex'), {
   keyid: id,
   algorithm: 'HS256',
@@ -28,46 +29,79 @@ const token = jwt.sign({}, Buffer.from(secret, 'hex'), {
   audience: `/admin/`,
 });
 
-console.log('JWT Token:', token.slice(0, 50) + '...');
+// JWT 디코딩해서 내용 확인
+const decoded = jwt.decode(token, { complete: true });
+console.log('\nJWT Header:', JSON.stringify(decoded.header));
+console.log('JWT Payload:', JSON.stringify(decoded.payload));
+console.log('JWT Full:', token);
 
-// 테스트 1: /site/ (인증 불필요)
-async function test() {
-  console.log('\n--- Test 1: /site/ (no auth) ---');
+async function test(name, url, headers = {}) {
+  console.log(`\n--- ${name} ---`);
+  console.log('URL:', url);
   try {
-    const r1 = await fetch(`${GHOST_URL}/ghost/api/admin/site/`);
-    console.log('Status:', r1.status);
-    const d1 = await r1.json();
-    console.log('Title:', d1?.site?.title);
-    console.log('Version:', d1?.site?.version);
+    const res = await fetch(url, { headers });
+    console.log('Status:', res.status);
+    const body = await res.text();
+    console.log('Response:', body.slice(0, 500));
   } catch (e) {
-    console.error('Failed:', e.message);
-  }
-
-  // 테스트 2: /users/ (인증 필요)
-  console.log('\n--- Test 2: /users/ (with auth) ---');
-  try {
-    const r2 = await fetch(`${GHOST_URL}/ghost/api/admin/users/`, {
-      headers: { Authorization: `Ghost ${token}` },
-    });
-    console.log('Status:', r2.status);
-    const body = await r2.text();
-    console.log('Response:', body.slice(0, 300));
-  } catch (e) {
-    console.error('Failed:', e.message);
-  }
-
-  // 테스트 3: Content API (다른 키로)
-  console.log('\n--- Test 3: /posts/ with versioned API ---');
-  try {
-    const r3 = await fetch(`${GHOST_URL}/ghost/api/v5.0/admin/users/`, {
-      headers: { Authorization: `Ghost ${token}` },
-    });
-    console.log('Status:', r3.status);
-    const body = await r3.text();
-    console.log('Response:', body.slice(0, 300));
-  } catch (e) {
-    console.error('Failed:', e.message);
+    console.error('Error:', e.message);
   }
 }
 
-test();
+async function run() {
+  // Test 1: No auth
+  await test('1. /site/ (no auth)',
+    `${GHOST_URL}/ghost/api/admin/site/`);
+
+  // Test 2: Standard Ghost auth
+  await test('2. /users/ (Ghost auth)',
+    `${GHOST_URL}/ghost/api/admin/users/`,
+    { 'Authorization': `Ghost ${token}` });
+
+  // Test 3: With Accept-Version header
+  await test('3. /users/ (Ghost auth + Accept-Version)',
+    `${GHOST_URL}/ghost/api/admin/users/`,
+    { 'Authorization': `Ghost ${token}`, 'Accept-Version': 'v5.0' });
+
+  // Test 4: Bearer auth instead of Ghost
+  await test('4. /users/ (Bearer auth)',
+    `${GHOST_URL}/ghost/api/admin/users/`,
+    { 'Authorization': `Bearer ${token}` });
+
+  // Test 5: Content API with content key
+  const contentKey = '8ac4a734f12b8b24e0c9e5ef42';
+  await test('5. Content API /posts/ (content key)',
+    `${GHOST_URL}/ghost/api/content/posts/?key=${contentKey}`);
+
+  // Test 6: Try /session/ endpoint
+  await test('6. /session/ (Ghost auth)',
+    `${GHOST_URL}/ghost/api/admin/session/`,
+    { 'Authorization': `Ghost ${token}` });
+
+  // Test 7: Try creating a post directly
+  console.log('\n--- 7. POST /posts/ (Ghost auth) ---');
+  try {
+    const res = await fetch(`${GHOST_URL}/ghost/api/admin/posts/`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Ghost ${token}`,
+        'Content-Type': 'application/json',
+        'Accept-Version': 'v5.0',
+      },
+      body: JSON.stringify({
+        posts: [{
+          title: 'API Test',
+          html: '<p>Test</p>',
+          status: 'draft',
+        }]
+      }),
+    });
+    console.log('Status:', res.status);
+    const body = await res.text();
+    console.log('Response:', body.slice(0, 500));
+  } catch (e) {
+    console.error('Error:', e.message);
+  }
+}
+
+run();
