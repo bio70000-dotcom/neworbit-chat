@@ -6,15 +6,32 @@
 
 const NAVER_NEWS_URL = 'https://openapi.naver.com/v1/search/news.json';
 
-// 블로그에 적합한 카테고리 검색어 목록
-const SEARCH_SEEDS = [
+// 작가별 검색 시드 키워드
+const WRITER_SEEDS = {
+  dalsanchek: [
+    '일상 추천', '힐링 방법', '여행 추천', '카페 추천',
+    '자기계발 방법', '인간관계 꿀팁', '취미 추천', '감성',
+    '선물 추천', '데이트 코스', '독서 추천', '산책 명소',
+    '명상 방법', '습관 만들기', '자존감', '우정',
+  ],
+  textree: [
+    'AI 서비스', 'IT 트렌드', '앱 추천', '생산성 도구',
+    '재테크 방법', '투자 방법', '부업 추천', '효율 꿀팁',
+    '가젯 리뷰', '테크 비교', '플랫폼 추천', '개발 트렌드',
+    '자동화 도구', '경제 분석', '절약 방법', '디지털 노마드',
+  ],
+  bbittul: [
+    'MBTI 유형', 'MZ세대 트렌드', '맛집 후기', '신상 리뷰',
+    '다이어트 방법', '운동 추천', '넷플릭스 추천', '게임 추천',
+    '패션 트렌드', '뷰티 꿀팁', '자취 꿀팁', '핫플레이스',
+    '밈 유행', '스트레스 해소', '꿀팁 모음', '가성비',
+  ],
+};
+
+// 기본 시드 (작가 미지정 시)
+const DEFAULT_SEEDS = [
   '추천', '방법', '꿀팁', '후기', '비교',
   '트렌드', '인기', '화제', '핫한', '요즘',
-  '건강', '다이어트', '운동', '뷰티',
-  '여행', '맛집', '카페', '데이트',
-  '재테크', '절약', '부업', '투자',
-  'AI', '앱추천', '생산성', '자기계발',
-  '심리', 'MBTI', '인간관계', '연애',
 ];
 
 function stripHtml(str) {
@@ -23,10 +40,11 @@ function stripHtml(str) {
 }
 
 /**
- * 네이버 뉴스에서 블로그 주제 후보 추출
+ * 네이버 뉴스에서 작가 분야에 맞는 블로그 주제 후보 추출
+ * @param {string} writerId - 작가 ID (dalsanchek, textree, bbittul)
  * @returns {Promise<Array<{keyword: string, category: string}>>}
  */
-async function getNaverNewsTopics() {
+async function getNaverNewsTopics(writerId) {
   const clientId = process.env.NAVER_CLIENT_ID;
   const clientSecret = process.env.NAVER_CLIENT_SECRET;
 
@@ -35,9 +53,10 @@ async function getNaverNewsTopics() {
     return [];
   }
 
-  // 랜덤 시드 3개 선택해서 검색
+  // 작가별 시드에서 랜덤 3개 선택
+  const writerSeeds = WRITER_SEEDS[writerId] || DEFAULT_SEEDS;
   const seeds = [];
-  const shuffled = [...SEARCH_SEEDS].sort(() => Math.random() - 0.5);
+  const shuffled = [...writerSeeds].sort(() => Math.random() - 0.5);
   for (let i = 0; i < 3 && i < shuffled.length; i++) {
     seeds.push(shuffled[i]);
   }

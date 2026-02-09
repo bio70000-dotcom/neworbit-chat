@@ -173,9 +173,9 @@ async function main() {
       console.warn(`[Agent] 필수 페이지 생성 실패 (계속 진행): ${e.message}`);
     }
 
-    // 글감 선정 (1편만)
+    // 글감 선정 (작가 분야 기반)
     console.log('\n[Step] 글감 선정 중...');
-    const topics = await selectTopics();
+    const topics = await selectTopics(writer);
 
     if (topics.length === 0) {
       console.error('글감을 선정하지 못했습니다');
