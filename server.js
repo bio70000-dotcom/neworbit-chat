@@ -68,6 +68,35 @@ const chatRooms = new Map(); // roomId -> { settings, roomSize, sockets, humans,
 const waveIdleTimers = new Map(); // pairId -> { warn, leave }
 const chatIdleTimers = new Map(); // roomId -> Map(socketId -> { warn, leave })
 
+const IDLE_MESSAGES = {
+  openai_friend_calm_20m: { warn: '야 뭐해? 말 없으면 나갈게.', leave: '인사하고 나간다~' },
+  openai_counselor_calm_20f: { warn: '조용하네. 말 없으면 나갈게.', leave: '인사하고 나갈게~' },
+  openai_counselor_serious_30m: { warn: '말 없으면 나간다.', leave: '인사하고 나간다.' },
+  openai_friend_fun_neutral: { warn: '조용하네. 말 없으면 나간다~', leave: '인사하고 나간다~' },
+
+  gemini_friend_fun_20f: { warn: '어디 갔어? 말 없으면 나간다.', leave: '인사하고 나간다~' },
+  gemini_info_serious_20m: { warn: '응답 없으면 나간다.', leave: '인사하고 나간다.' },
+  gemini_friend_fun_30f: { warn: '말 없으면 나간다~', leave: '인사하고 나간다~' },
+  gemini_friend_calm_40m: { warn: '조용하네. 말 없으면 나갈게.', leave: '인사하고 나간다.' },
+
+  clova_friend_calm_30f: { warn: '말 없으면 나갈게.', leave: '인사하고 나간다~' },
+  clova_info_calm_30m: { warn: '응답 없으면 나간다.', leave: '인사하고 나간다.' },
+  clova_counselor_calm_40f: { warn: '말 없으면 나갈게요.', leave: '인사하고 나갈게요.' },
+  clova_info_serious_40m: { warn: '응답 없으면 나가겠습니다.', leave: '인사하고 나가겠습니다.' },
+
+  grok_friend_fun_20m: { warn: '말 없으면 나간다 ㅋㅋ', leave: '인사하고 나간다~' },
+  grok_friend_fun_30f: { warn: '말 없으면 나간다~', leave: '인사하고 나간다~' },
+  grok_counselor_serious_30m: { warn: '말 없으면 나간다.', leave: '인사하고 나간다.' },
+  grok_counselor_calm_40f: { warn: '조용하네. 말 없으면 나갈게.', leave: '인사하고 나간다~' }
+};
+
+function getIdleMessage(personaId, type) {
+  const entry = personaId ? IDLE_MESSAGES[personaId] : null;
+  if (entry && entry[type]) return entry[type];
+  if (type === 'warn') return '뭐하냐 말 없으면 나갈게.';
+  return '인사하고 나간다~';
+}
+
 function normalizeSettings(input = {}) {
   const roomSize = [2, 3, 4].includes(Number(input.roomSize)) ? Number(input.roomSize) : 2;
   const ageGroup = ['10s', '20s', '30s', '40plus'].includes(input.ageGroup) ? input.ageGroup : 'na';
@@ -152,13 +181,13 @@ function clearWaveIdle(pairId) {
   waveIdleTimers.delete(pairId);
 }
 
-function setWaveIdle(pairId, socket) {
+function setWaveIdle(pairId, socket, personaId) {
   clearWaveIdle(pairId);
   const warn = setTimeout(() => {
-    socket.emit('message', { sender: 'partner', text: '뭐하냐 말 없으면 나갈게.' });
+    socket.emit('message', { sender: 'partner', text: getIdleMessage(personaId, 'warn') });
   }, 30000);
   const leave = setTimeout(async () => {
-    socket.emit('message', { sender: 'partner', text: '인사하고 나간다~' });
+    socket.emit('message', { sender: 'partner', text: getIdleMessage(personaId, 'leave') });
     const pair = await waveRedis.deletePair(redisClient, pairId);
     if (pair) {
       const other = waveRedis.otherInPair(pair, socket.id);
@@ -184,7 +213,7 @@ function clearChatIdleForRoom(roomId) {
   chatIdleTimers.delete(roomId);
 }
 
-function setChatIdle(roomId, socket, leaveRoom) {
+function setChatIdle(roomId, socket, leaveRoom, personaId) {
   let roomTimers = chatIdleTimers.get(roomId);
   if (!roomTimers) {
     roomTimers = new Map();
@@ -194,10 +223,10 @@ function setChatIdle(roomId, socket, leaveRoom) {
   if (prev?.warn) clearTimeout(prev.warn);
   if (prev?.leave) clearTimeout(prev.leave);
   const warn = setTimeout(() => {
-    socket.emit('chat_message', { senderType: 'system', senderName: '상대', text: '뭐하냐 말 없으면 나갈게.' });
+    socket.emit('chat_message', { senderType: 'system', senderName: '상대', text: getIdleMessage(personaId, 'warn') });
   }, 30000);
   const leave = setTimeout(() => {
-    socket.emit('chat_message', { senderType: 'system', senderName: '상대', text: '인사하고 나갈게~' });
+    socket.emit('chat_message', { senderType: 'system', senderName: '상대', text: getIdleMessage(personaId, 'leave') });
     leaveRoom();
   }, 60000);
   roomTimers.set(socket.id, { warn, leave });
@@ -208,6 +237,7 @@ async function sendAiResponses(roomId, userText) {
   if (!room || room.aiParticipants.length === 0) return;
   const tasks = room.aiParticipants.map(async (ai, idx) => {
     await new Promise((r) => setTimeout(r, 800 * idx));
+    io.to(roomId).emit('typing', { on: true });
     await humanDelay();
     if (!chatRooms.has(roomId)) return;
     const end = aiReplyLatencyMs.startTimer();
@@ -219,14 +249,15 @@ async function sendAiResponses(roomId, userText) {
     end({ provider: result.provider || 'na', fallback: String(!!result.fallback) });
     aiRepliesTotal.inc({ persona: result.personaId || ai.personaId, provider: result.provider || 'na', fallback: String(!!result.fallback) });
     io.to(roomId).emit('chat_message', { senderType: 'ai', senderName: getPersonaName(result.personaId || ai.personaId), text: result.text });
+    io.to(roomId).emit('typing', { on: false });
   });
   await Promise.all(tasks);
   clearChatIdleForRoom(roomId);
 }
 
-// 사람처럼 보이기 위한 타이핑 딜레이 (2~5초 랜덤)
+// 사람처럼 보이기 위한 타이핑 딜레이 (3~5초 랜덤)
 function humanDelay() {
-  const ms = 2000 + Math.floor(Math.random() * 3000);
+  const ms = 3000 + Math.floor(Math.random() * 2000);
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
@@ -325,8 +356,9 @@ io.on('connection', (socket) => {
             if (receiver === 'ai') {
                 await waveRedis.createPair(redisClient, pairId, socket.id, 'ai');
                 socket.emit('broadcast_delivered', { pairId });
-                setWaveIdle(pairId, socket);
-                await ensurePersonaForRoom(pairId, socket.id, forcePersonaId);
+                const personaId = await ensurePersonaForRoom(pairId, socket.id, forcePersonaId);
+                setWaveIdle(pairId, socket, personaId);
+                socket.emit('typing', { on: true });
                 const [delayDone, aiResult] = await Promise.all([
                     humanDelay(),
                     (async () => {
@@ -342,13 +374,15 @@ io.on('connection', (socket) => {
                     })()
                 ]);
                 clearWaveIdle(pairId);
+                socket.emit('typing', { on: false });
                 socket.emit('message', { sender: 'partner', text: aiResult.text, ...(isTestMode ? { _personaId: aiResult.personaId } : {}) });
+                setWaveIdle(pairId, socket, aiResult.personaId || personaId);
             } else {
                 await waveRedis.removeReceiver(redisClient, receiver);
                 await waveRedis.createPair(redisClient, pairId, socket.id, receiver);
                 io.to(receiver).emit('broadcast_received', { pairId, text });
                 socket.emit('broadcast_delivered', { pairId });
-                setWaveIdle(pairId, socket);
+                setWaveIdle(pairId, socket, null);
             }
             messagesTotal.inc();
         });
@@ -362,6 +396,8 @@ io.on('connection', (socket) => {
             const other = waveRedis.otherInPair(pair, socket.id);
             if (!other) return;
             if (other === 'ai') {
+                clearWaveIdle(pairId);
+                socket.emit('typing', { on: true });
                 const [, aiResult] = await Promise.all([
                     humanDelay(),
                     (async () => {
@@ -377,9 +413,12 @@ io.on('connection', (socket) => {
                     })()
                 ]);
                 clearWaveIdle(pairId);
+                socket.emit('typing', { on: false });
                 socket.emit('message', { sender: 'partner', text: aiResult.text, ...(isTestMode ? { _personaId: aiResult.personaId } : {}) });
+                setWaveIdle(pairId, socket, aiResult.personaId || null);
             } else {
-                setWaveIdle(pairId, socket);
+                clearWaveIdle(pairId);
+                setWaveIdle(pairId, socket, null);
                 io.to(other).emit('message', { sender: 'partner', text: msg });
             }
             messagesTotal.inc();
@@ -509,7 +548,8 @@ io.on('connection', (socket) => {
         clearChatIdleForRoom(roomId);
         socket.to(roomId).emit('chat_message', { senderType: 'human', senderName: '상대', text: msg });
         messagesTotal.inc();
-        setChatIdle(roomId, socket, leaveRoom);
+        const personaId = room.aiParticipants[0]?.personaId || null;
+        setChatIdle(roomId, socket, leaveRoom, personaId);
         await sendAiResponses(roomId, msg);
     });
 });

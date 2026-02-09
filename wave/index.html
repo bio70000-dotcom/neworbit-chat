@@ -31,6 +31,7 @@
     #chatArea { display: none; flex: 1; flex-direction: column; }
     #chatArea.visible { display: flex; }
     #chatInputRow { display: flex; gap: 8px; margin-top: 12px; }
+    #typingIndicator { color: #94a3b8; font-size: 0.8rem; padding: 6px 0; }
     #chatInput { flex: 1; padding: 12px 16px; border-radius: 24px; border: 1px solid #334155; background: #1e293b; color: #e2e8f0; font-size: 1rem; outline: none; }
     #chatInput:focus { border-color: #6366f1; }
     .error { color: #f87171; font-size: 0.875rem; margin-top: 8px; }
@@ -135,6 +136,7 @@
 
     <div id="chatArea" class="chatArea">
       <div id="messages"></div>
+      <div id="typingIndicator" style="display:none;">상대방이 입력하고 있습니다...</div>
       <div id="chatInputRow">
         <input type="text" id="chatInput" placeholder="메시지..." maxlength="2000" />
         <button type="button" class="btn primary" id="sendChat">보내기</button>
@@ -154,6 +156,7 @@
     const chatArea = document.getElementById('chatArea');
     const messagesEl = document.getElementById('messages');
     const chatInput = document.getElementById('chatInput');
+    const typingEl = document.getElementById('typingIndicator');
     const sendChatBtn = document.getElementById('sendChat');
     const endBtn = document.getElementById('endBtn');
     const errorEl = document.getElementById('error');
@@ -183,6 +186,7 @@
       });
     }
     function addMessage(who, text, personaId) {
+      typingEl.style.display = 'none';
       const div = document.createElement('div');
       div.className = 'msg ' + (who === 'me' ? 'me' : 'partner');
       let badge = '';
@@ -295,6 +299,13 @@
           }, 1000);
         } else {
           addMessage('partner', text, pid);
+        }
+      });
+      socket.on('typing', (data) => {
+        if (data && data.on) {
+          typingEl.style.display = 'block';
+        } else {
+          typingEl.style.display = 'none';
         }
       });
 
