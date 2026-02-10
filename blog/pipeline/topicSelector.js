@@ -64,30 +64,32 @@ function getSeasonalTopics(writerId) {
 
 /**
  * Google Trends에서 작가 분야에 맞는 트렌드 가져오기
+ * 매칭되는 트렌드가 없으면 null (작가와 무관한 트렌드 할당 방지)
  */
-async function getTrendTopic(writerId) {
+async function getTrendTopic(writerId, excludeKeywords = new Set()) {
   try {
     const trends = await getRelevantTrends();
     if (trends.length === 0) return null;
 
     const writerKws = WRITER_SEARCH_KEYWORDS[writerId] || [];
 
-    // 작가 분야와 매칭되는 트렌드 우선
     const matched = trends.filter((t) => {
       const lower = t.toLowerCase();
       return writerKws.some((kw) => lower.includes(kw.toLowerCase()));
     });
 
-    const candidates = matched.length > 0 ? matched : trends;
+    // 작가 분야와 매칭되는 트렌드만 사용. 없으면 null (다른 소스 시도)
+    const candidates = matched.length > 0 ? matched : [];
 
     for (const keyword of candidates) {
+      if (excludeKeywords.has(keyword)) continue;
       const dup = await isDuplicate(keyword);
       if (!dup) {
         return { keyword, category: 'trending', source: 'google_trends' };
       }
     }
 
-    return { keyword: candidates[0], category: 'trending', source: 'google_trends' };
+    return null;
   } catch (e) {
     console.warn(`[TopicSelector] 트렌드 수집 실패: ${e.message}`);
     return null;
@@ -97,17 +99,18 @@ async function getTrendTopic(writerId) {
 /**
  * 네이버 뉴스에서 작가 분야에 맞는 주제 가져오기
  */
-async function getNaverTopic(writerId) {
+async function getNaverTopic(writerId, excludeKeywords = new Set()) {
   try {
     const topics = await getNaverNewsTopics(writerId);
     if (topics.length === 0) return null;
 
     for (const topic of topics) {
+      if (excludeKeywords.has(topic.keyword)) continue;
       const dup = await isDuplicate(topic.keyword);
       if (!dup) return topic;
     }
 
-    return topics[0];
+    return null;
   } catch (e) {
     console.warn(`[TopicSelector] 네이버 뉴스 주제 수집 실패: ${e.message}`);
     return null;
@@ -116,21 +119,23 @@ async function getNaverTopic(writerId) {
 
 /**
  * 소스 목록에서 순서대로 시도
+ * @param {Set<string>} [excludeKeywords] - 오늘 이미 선정된 키워드 (중복 방지)
  */
-async function trySourcesInOrder(sources, writerId) {
+async function trySourcesInOrder(sources, writerId, excludeKeywords = new Set()) {
   for (const source of sources) {
     let topic = null;
 
     switch (source) {
       case 'google_trends':
-        topic = await getTrendTopic(writerId);
+        topic = await getTrendTopic(writerId, excludeKeywords);
         break;
       case 'naver_news':
-        topic = await getNaverTopic(writerId);
+        topic = await getNaverTopic(writerId, excludeKeywords);
         break;
       case 'seasonal': {
         const seasonal = getSeasonalTopics(writerId);
         for (const s of seasonal) {
+          if (excludeKeywords.has(s.keyword)) continue;
           const dup = await isDuplicate(s.keyword);
           if (!dup) { topic = s; break; }
         }
@@ -150,12 +155,12 @@ async function trySourcesInOrder(sources, writerId) {
   for (const fb of fallbackOrder) {
     let topic = null;
     if (fb === 'seasonal') {
-      const seasonal = getSeasonalTopics(writerId);
+      const seasonal = getSeasonalTopics(writerId).filter((s) => !excludeKeywords.has(s.keyword));
       if (seasonal.length > 0) topic = seasonal[0];
     } else if (fb === 'naver_news') {
-      topic = await getNaverTopic(writerId);
+      topic = await getNaverTopic(writerId, excludeKeywords);
     } else {
-      topic = await getTrendTopic(writerId);
+      topic = await getTrendTopic(writerId, excludeKeywords);
     }
     if (topic) {
       console.log(`[TopicSelector] 선정 (fallback): [${topic.source}] "${topic.keyword}"`);
@@ -173,9 +178,11 @@ async function trySourcesInOrder(sources, writerId) {
 /**
  * 1편의 글감 선정 (작가 분야 기반)
  * @param {Object} writer - 작가 객체 (writers.js)
+ * @param {{ excludeKeywords?: Set<string> }} [options] - 오늘 이미 쓴 키워드 (중복 방지)
  */
-async function selectTopics(writer) {
+async function selectTopics(writer, options = {}) {
   const writerId = writer?.id || 'dalsanchek';
+  const excludeKeywords = options.excludeKeywords || new Set();
   const roll = Math.random();
 
   let primarySource;
@@ -194,7 +201,7 @@ async function selectTopics(writer) {
 
   console.log(`[TopicSelector] 작가: ${writer?.nickname || writerId}, 소스: ${primarySource} (roll: ${roll.toFixed(2)})`);
 
-  const topic = await trySourcesInOrder(fallbackSources, writerId);
+  const topic = await trySourcesInOrder(fallbackSources, writerId, excludeKeywords);
   return [topic];
 }
 

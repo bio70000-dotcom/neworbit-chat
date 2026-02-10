@@ -182,12 +182,14 @@ function assignTimesToPosts(plan, times) {
 // ── 주제 선정 ──────────────────────────────
 async function selectDailyTopics() {
   const plan = [];
+  const usedKeywords = new Set();
 
   for (const writer of WRITERS) {
     const topics = [];
     for (let i = 0; i < POSTS_PER_WRITER; i++) {
-      const [topic] = await selectTopics(writer);
+      const [topic] = await selectTopics(writer, { excludeKeywords: usedKeywords });
       topics.push(topic);
+      usedKeywords.add(topic.keyword);
     }
     plan.push({ writer, topics });
   }
@@ -201,12 +203,18 @@ async function selectDailyTopics() {
  * @param {number[]} numbers 재선정할 번호 (1~6)
  */
 async function reselectTopics(plan, numbers) {
+  const usedKeywords = new Set();
+  for (const entry of plan) {
+    for (const t of entry.topics) usedKeywords.add(t.keyword);
+  }
   let num = 1;
   for (const entry of plan) {
     for (let i = 0; i < entry.topics.length; i++) {
       if (numbers.includes(num)) {
-        const [newTopic] = await selectTopics(entry.writer);
+        usedKeywords.delete(entry.topics[i].keyword);
+        const [newTopic] = await selectTopics(entry.writer, { excludeKeywords: usedKeywords });
         entry.topics[i] = newTopic;
+        usedKeywords.add(newTopic.keyword);
         console.log(`[Scheduler] ${num}번 재선정: "${newTopic.keyword}"`);
       }
       num++;
