@@ -289,7 +289,7 @@ async function executeSchedule(schedule, userPhotos) {
 
     let result;
     try {
-      result = await processOne(item.topic, item.writer, { userImageBuffers });
+      result = await processOne(item.topic, item.writer, { userImageBuffers, postIndex: item.index });
       if (!result || typeof result.success === 'undefined') {
         result = { success: false, keyword: item.topic.keyword, error: 'processOne returned invalid result', writer: item.writer.nickname };
       }

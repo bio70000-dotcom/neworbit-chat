@@ -17,6 +17,8 @@ const { publish } = require('./pipeline/publisher');
 const { markPublished, disconnect } = require('./utils/dedup');
 const { ensureRequiredPages } = require('./utils/requiredPages');
 const { selectWriter, getWriterById } = require('./writers');
+const { sendMessage } = require('./utils/telegram');
+const { extractKeywordsFromHtml } = require('./utils/pexelsSearch');
 
 const fs = require('fs');
 const path = require('path');
@@ -69,6 +71,20 @@ async function processOne(topic, writer, options = {}) {
     } catch (e) {
       console.warn(`[글] 인간화 실패, 초안 사용: ${e.message}`);
       finalPost = draft;
+    }
+
+    // 소제목(h2) 텔레그램 전송 — 사용자가 이미지 선택·캡션 시 참고
+    const postIndex = options.postIndex;
+    if (postIndex != null) {
+      const h2List = extractKeywordsFromHtml(finalPost.body);
+      if (h2List.length > 0) {
+        const subheadingsMsg = `${postIndex}번 글 소제목 (이미지 참고): ${h2List.join(', ')}`;
+        try {
+          await sendMessage(subheadingsMsg);
+        } catch (err) {
+          console.warn(`[글] 소제목 텔레그램 전송 실패: ${err.message}`);
+        }
+      }
     }
 
     // Step 4: 이미지 생성 (사용자 이미지 > AI + Pexels 실사)

@@ -60,7 +60,12 @@ async function humanize(draft, writer) {
   const persona = writer.persona;
   console.log(`[Humanizer] 작가: ${persona.name}`);
 
-  const systemPrompt = `${persona.style}
+  const oneWriterRule = `이 글의 필명은 ${persona.name} 한 명뿐이다. 아래 문체 규칙을 전체에 일관 적용하고, 다른 작가(달산책/텍스트리/삐뚤빼뚤) 말투가 섞이지 않게 해.\n\n`;
+  const examples = (persona.exampleSentences && persona.exampleSentences.length)
+    ? `## 말투 예시 (이와 비슷한 톤으로 통일)\n${persona.exampleSentences.map((s) => `- ${s}`).join('\n')}\n\n`
+    : '';
+
+  const systemPrompt = `${oneWriterRule}${examples}${persona.style}
 
 ## HTML 규칙
 - h2, h3, p, ul, li, strong, a 태그 유지
@@ -86,7 +91,7 @@ async function humanize(draft, writer) {
   "tags": ["태그1", "태그2"]
 }`;
 
-  const userContent = `아래 블로그 초안을 네 스타일로 완전히 다시 써줘. 정보는 유지하되 말투와 흐름을 인간적으로 바꿔.
+  const userContent = `아래 블로그 초안을 네 스타일로 완전히 다시 써줘. 정보는 유지하되 말투와 흐름을 인간적으로 바꿔. 반드시 ${persona.name} 말투만 사용. 다른 작가 말투 금지.
 
 ## 원본 초안
 - 제목: ${draft.title}

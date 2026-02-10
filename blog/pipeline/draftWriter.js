@@ -5,7 +5,8 @@
  */
 
 const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
-const MODEL = 'gemini-2.5-flash';
+const MODEL = 'gemini-3-pro-preview';
+const FALLBACK_MODEL = 'gemini-2.5-flash';
 
 // ── 랜덤 설정 풀 ──────────────────────────────────────
 
@@ -36,11 +37,11 @@ function randomTemp() {
 
 // ── Gemini API ──────────────────────────────────────
 
-async function callGemini(prompt, maxTokens = 2048, temperature = 0.8) {
+async function callGeminiWithModel(prompt, maxTokens, temperature, model) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error('GEMINI_API_KEY가 설정되지 않았습니다');
 
-  const url = `${GEMINI_BASE_URL}/models/${MODEL}:generateContent?key=${apiKey}`;
+  const url = `${GEMINI_BASE_URL}/models/${model}:generateContent?key=${apiKey}`;
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 60000);
@@ -74,6 +75,20 @@ async function callGemini(prompt, maxTokens = 2048, temperature = 0.8) {
   }
 }
 
+/** primary 모델 실패 시 fallback 모델로 재시도 */
+async function callGemini(prompt, maxTokens = 2048, temperature = 0.8) {
+  try {
+    return await callGeminiWithModel(prompt, maxTokens, temperature, MODEL);
+  } catch (e) {
+    const isModelError = /404|400|503/.test(String(e.message)) || e.message.includes('not found');
+    if (isModelError && MODEL !== FALLBACK_MODEL) {
+      console.warn(`[DraftWriter] ${MODEL} 실패, ${FALLBACK_MODEL}로 재시도: ${e.message}`);
+      return await callGeminiWithModel(prompt, maxTokens, temperature, FALLBACK_MODEL);
+    }
+    throw e;
+  }
+}
+
 // ── 초안 생성 ──────────────────────────────────────
 
 /**
@@ -103,6 +118,10 @@ async function writeDraft(topic, researchData) {
 - 키워드: "${topic.keyword}"
 - 카테고리: ${topic.category}
 - 연도: ${year}년
+
+## 리서치 기반 작성 (필수)
+- 아래 리서치(네이버 뉴스/블로그)에 나온 사실·수치·사례를 반드시 활용할 것.
+- 자료에 없는 주장·숫자는 하지 말 것. 요약·재구성이며 창작이 아님.
 
 ## 리서치 자료
 ${researchData}
