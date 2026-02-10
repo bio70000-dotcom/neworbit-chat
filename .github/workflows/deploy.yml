@@ -41,6 +41,8 @@ jobs:
             echo "TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}" >> .env
             echo "TELEGRAM_CHAT_ID=${{ secrets.TELEGRAM_CHAT_ID }}" >> .env
             echo "PEXELS_API_KEY=${{ secrets.PEXELS_API_KEY }}" >> .env
+            echo "LOG_VIEWER_ACCESS_CODE=${{ secrets.LOG_VIEWER_ACCESS_CODE }}" >> .env
+            echo "LOG_VIEWER_API_KEY=${{ secrets.LOG_VIEWER_API_KEY }}" >> .env
             # 도커 재시작
             sudo docker-compose down
             sudo docker-compose up -d --build

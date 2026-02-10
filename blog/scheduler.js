@@ -13,6 +13,7 @@ require('dotenv').config();
 
 const fs = require('fs');
 const { WRITERS } = require('./writers');
+
 const { selectTopics } = require('./pipeline/topicSelector');
 
 function serverLog(msg, data = {}) {
@@ -31,6 +32,19 @@ const {
   sendPostResult,
   sendDailySummary,
 } = require('./utils/telegram');
+
+// 예기치 않은 예외/거부 시 로그 및 텔레그램 알림 (발행이 멈춘 원인 추적용)
+process.on('uncaughtException', (err) => {
+  console.error('[Scheduler] uncaughtException:', err.message);
+  console.error(err.stack);
+  serverLog('uncaughtException', { error: err.message, stack: err.stack });
+  sendMessage(`❌ Scheduler 비정상 종료 (uncaughtException): ${(err.message || '').slice(0, 200)}`).catch(() => {});
+});
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[Scheduler] unhandledRejection:', reason);
+  serverLog('unhandledRejection', { reason: String(reason) });
+  sendMessage(`❌ Scheduler unhandledRejection: ${String(reason).slice(0, 200)}`).catch(() => {});
+});
 
 // ── 설정 ──────────────────────────────────
 const POSTS_PER_WRITER = 2;          // 작가당 글 수
@@ -226,19 +240,21 @@ async function reselectTopics(plan, numbers) {
 // ── 발행 실행 ──────────────────────────────
 async function executeSchedule(schedule, userPhotos) {
   const results = [];
-  const now = getKSTDate();
-  const todayBaseMin = now.getUTCHours() * 60 + now.getUTCMinutes(); // KST 기준 현재 시각(분)
 
   let displayOrder = 0;
   for (const item of schedule) {
     displayOrder += 1;
     const timeStr = `${String(Math.floor(item.time / 60)).padStart(2, '0')}:${String(item.time % 60).padStart(2, '0')}`;
-    const waitMin = item.time - todayBaseMin;
+
+    // 매 반복마다 현재 KST 기준으로 대기 시간 계산 (고정 시각 사용 시 2번째 글부터 잘못 대기함)
+    const now = getKSTDate();
+    const currentMin = now.getUTCHours() * 60 + now.getUTCMinutes();
+    const waitMin = item.time - currentMin;
 
     if (waitMin > 0) {
       const h = Math.floor(waitMin / 60);
       const m = waitMin % 60;
-      console.log(`[Scheduler] ${item.index}번 "${item.topic.keyword}" → ${h}시간 ${m}분 후 발행`);
+      console.log(`[Scheduler] ${item.index}번 "${item.topic.keyword}" → ${h}시간 ${m}분 후 발행 (현재 KST ${Math.floor(currentMin/60)}:${String(currentMin%60).padStart(2,'0')})`);
       await sendMessage(`⏳ ${item.index}번 "${item.topic.keyword}" → ${timeStr} KST 발행 예정`);
       await new Promise((r) => setTimeout(r, waitMin * 60 * 1000));
     } else {
@@ -252,10 +268,14 @@ async function executeSchedule(schedule, userPhotos) {
     );
     const userImageBuffers = [];
     for (const photo of assignedPhotos) {
-      const buffer = await downloadPhoto(photo.fileId);
-      if (buffer) {
-        userImageBuffers.push(buffer);
-        photo.used = true;
+      try {
+        const buffer = await downloadPhoto(photo.fileId);
+        if (buffer) {
+          userImageBuffers.push(buffer);
+          photo.used = true;
+        }
+      } catch (e) {
+        console.warn(`[Scheduler] 사진 다운로드 실패: ${e.message}`);
       }
     }
 
@@ -263,25 +283,42 @@ async function executeSchedule(schedule, userPhotos) {
       console.log(`[Scheduler] ${item.index}번에 사용자 이미지 ${userImageBuffers.length}장 적용`);
     }
 
-    // 글 발행
+    // 글 발행 (예외까지 잡아서 텔레그램으로 보고)
     console.log(`\n[Scheduler] ${item.index}번 발행 시작: "${item.topic.keyword}" by ${item.writer.nickname}`);
     serverLog('post.start', { displayOrder, timeStr, keyword: item.topic.keyword, writer: item.writer.nickname });
+
+    let result;
     try {
-      const result = await processOne(item.topic, item.writer, { userImageBuffers });
-      results.push(result);
-      await sendPostResult(result);
-      serverLog('post.done', { displayOrder, timeStr, keyword: item.topic.keyword, success: true, title: result.title });
+      result = await processOne(item.topic, item.writer, { userImageBuffers });
+      if (!result || typeof result.success === 'undefined') {
+        result = { success: false, keyword: item.topic.keyword, error: 'processOne returned invalid result', writer: item.writer.nickname };
+      }
     } catch (e) {
-      const failResult = {
+      console.error(`[Scheduler] ${item.index}번 processOne 예외:`, e);
+      serverLog('post.error', { displayOrder, error: e.message, stack: e.stack });
+      result = {
         success: false,
         keyword: item.topic.keyword,
-        error: e.message,
+        error: e.message || String(e),
         writer: item.writer.nickname,
       };
-      results.push(failResult);
-      await sendPostResult(failResult);
-      serverLog('post.done', { displayOrder, timeStr, keyword: item.topic.keyword, success: false, error: e.message });
     }
+
+    results.push(result);
+
+    try {
+      await sendPostResult(result);
+    } catch (sendErr) {
+      console.warn(`[Scheduler] 발행 결과 텔레그램 전송 실패: ${sendErr.message}`);
+    }
+    serverLog('post.done', {
+      displayOrder,
+      timeStr,
+      keyword: item.topic.keyword,
+      success: result.success,
+      title: result.title,
+      error: result.error,
+    });
 
     // 다음 글 전 30초 대기
     await new Promise((r) => setTimeout(r, 30000));

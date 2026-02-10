@@ -34,6 +34,7 @@ services:
       - app
       - grafana
       - ghost
+      - log-viewer
 
   mongo:
     image: mongo:latest
@@ -170,9 +171,26 @@ services:
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
       - REDIS_HOST=redis
+      - DEBUG_LOG_PATH=/var/log/neworbit/scheduler.log
+    volumes:
+      - neworbit-logs:/var/log/neworbit
     depends_on:
       - ghost
       - redis
+
+  log-viewer:
+    build: ./log-viewer
+    container_name: log-viewer
+    restart: always
+    environment:
+      - LOG_DIR=/var/log/neworbit
+      - LOG_VIEWER_ACCESS_CODE=${LOG_VIEWER_ACCESS_CODE}
+      - LOG_VIEWER_API_KEY=${LOG_VIEWER_API_KEY}
+      - NODE_ENV=production
+    volumes:
+      - neworbit-logs:/var/log/neworbit:ro
+    ports:
+      - "3010:3010"
 
   ghost:
     image: ghost:5-alpine
@@ -206,3 +224,4 @@ volumes:
   prometheus-data:
   grafana-data:
   ghost-data:
+  neworbit-logs:

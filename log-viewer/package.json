@@ -1,0 +1,12 @@
+{
+  "name": "neworbit-log-viewer",
+  "version": "1.0.0",
+  "description": "Access-protected server log viewer for log.neworbit.co.kr",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
