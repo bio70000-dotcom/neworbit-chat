@@ -34,6 +34,25 @@ const DEFAULT_SEEDS = [
   '트렌드', '인기', '화제', '핫한', '요즘',
 ];
 
+// 작가별 관련도 매칭용 키워드 (제목에 포함되면 해당 작가 주제로 적합)
+const WRITER_MATCH_KEYWORDS = {
+  dalsanchek: [
+    '일상', '힐링', '여행', '카페', '자기계발', '인간관계', '취미', '감성',
+    '선물', '데이트', '독서', '산책', '명상', '습관', '자존감', '우정',
+    '감정', '관계', '라이프스타일', '데이트', '코스', '추천', '방법',
+  ],
+  textree: [
+    'AI', 'IT', '테크', '앱', '생산성', '재테크', '투자', '부업', '효율',
+    '가젯', '리뷰', '플랫폼', '개발', '자동화', '경제', '절약', '디지털',
+    '서비스', '기술', '출시', '비교', '분석', '노마드',
+  ],
+  bbittul: [
+    'MBTI', 'MZ', '맛집', '신상', '다이어트', '운동', '넷플릭스', '게임',
+    '패션', '뷰티', '자취', '핫플', '밈', '유행', '꿀팁', '가성비',
+    '트렌드', '후기', '리뷰', '먹거리', '핫한', '화제',
+  ],
+};
+
 function stripHtml(str) {
   if (!str) return '';
   return str.replace(/<[^>]*>/g, '').replace(/&[a-z]+;/gi, ' ').trim();
@@ -53,11 +72,11 @@ async function getNaverNewsTopics(writerId) {
     return [];
   }
 
-  // 작가별 시드에서 랜덤 3개 선택
+  // 작가별 시드에서 랜덤 5개 선택 (후보 풀 확대)
   const writerSeeds = WRITER_SEEDS[writerId] || DEFAULT_SEEDS;
   const seeds = [];
   const shuffled = [...writerSeeds].sort(() => Math.random() - 0.5);
-  for (let i = 0; i < 3 && i < shuffled.length; i++) {
+  for (let i = 0; i < 5 && i < shuffled.length; i++) {
     seeds.push(shuffled[i]);
   }
 
@@ -97,7 +116,7 @@ async function getNaverNewsTopics(writerId) {
     }
   }
 
-  // 중복 제거 후 최대 10개
+  // 중복 제거
   const unique = [];
   const seen = new Set();
   for (const t of allTopics) {
@@ -107,8 +126,22 @@ async function getNaverNewsTopics(writerId) {
     }
   }
 
-  console.log(`[NaverTopics] ${seeds.join(',')} 검색 → ${unique.length}개 주제 후보`);
-  return unique.slice(0, 10);
+  // 작가 전문 분야 관련도로 정렬 (높을수록 해당 작가에 적합)
+  const matchKws = WRITER_MATCH_KEYWORDS[writerId] || [];
+  const scored = unique.map((t) => {
+    const lower = t.keyword.toLowerCase();
+    const score = matchKws.filter((kw) => lower.includes(kw.toLowerCase())).length;
+    return { ...t, _score: score };
+  });
+  scored.sort((a, b) => b._score - a._score);
+
+  // 관련도 1 이상인 주제가 있으면 그만 반환, 없을 때만 관련도 0 포함
+  const withRelevance = scored.filter((s) => s._score > 0);
+  const pool = withRelevance.length > 0 ? withRelevance : scored;
+  const result = pool.slice(0, 10).map(({ _score, ...t }) => t);
+
+  console.log(`[NaverTopics] ${seeds.join(',')} 검색 → ${result.length}개 (작가 관련도 순)`);
+  return result;
 }
 
 /**
