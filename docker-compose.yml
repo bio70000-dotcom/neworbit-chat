@@ -191,6 +191,7 @@ services:
       - NODE_ENV=production
     volumes:
       - ghost-data:/var/lib/ghost/content
+      - ./ghost/config.production.json:/var/lib/ghost/config.production.json
     depends_on:
       - redis
       - mailpit

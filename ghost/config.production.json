@@ -1,0 +1,27 @@
+{
+  "url": "https://blog.neworbit.co.kr",
+  "server": {
+    "port": 2368,
+    "host": "0.0.0.0"
+  },
+  "database": {
+    "client": "sqlite3",
+    "connection": {
+      "filename": "/var/lib/ghost/content/data/ghost.db"
+    }
+  },
+  "mail": {
+    "transport": "SMTP",
+    "options": {
+      "host": "mailpit",
+      "port": 1025,
+      "from": "noreply@neworbit.co.kr"
+    }
+  },
+  "paths": {
+    "contentPath": "/var/lib/ghost/content"
+  },
+  "security": {
+    "staffDeviceVerification": false
+  }
+}
