@@ -43,11 +43,13 @@ jobs:
             echo "PEXELS_API_KEY=${{ secrets.PEXELS_API_KEY }}" >> .env
             echo "LOG_VIEWER_ACCESS_CODE=${{ secrets.LOG_VIEWER_ACCESS_CODE }}" >> .env
             echo "LOG_VIEWER_API_KEY=${{ secrets.LOG_VIEWER_API_KEY }}" >> .env
+            # 로그 디렉터리 (log.neworbit.co.kr에서 조회)
+            mkdir -p /home/ubuntu/chat-app/data/logs
             # 도커 재시작
             sudo docker-compose down
             sudo docker-compose up -d --build
             sudo docker system prune -f # 청소까지 깔끔하게
-            # 매일 새벽 4시(KST) 앱 컨테이너 재시작 크론 설정
-            (crontab -l 2>/dev/null | grep -v 'daily-restart' ; echo '0 19 * * * cd /home/ubuntu/chat-app && sudo docker-compose restart app >> /tmp/daily-restart.log 2>&1 # daily-restart') | crontab -
-            # 블로그 에이전트: 하루 3회 실행 (KST 09:30, 14:10, 18:40 기준 + agent 내부 0~55분 랜덤 딜레이)
-            (crontab -l 2>/dev/null | grep -v 'blog-agent' ; echo '30 0 * * * cd /home/ubuntu/chat-app && sudo docker-compose --profile blog-run run --rm blog-agent >> /tmp/blog-agent.log 2>&1 # blog-agent'; echo '10 5 * * * cd /home/ubuntu/chat-app && sudo docker-compose --profile blog-run run --rm blog-agent >> /tmp/blog-agent.log 2>&1 # blog-agent'; echo '40 9 * * * cd /home/ubuntu/chat-app && sudo docker-compose --profile blog-run run --rm blog-agent >> /tmp/blog-agent.log 2>&1 # blog-agent') | crontab -
+            # 매일 새벽 4시(KST) 앱 컨테이너 재시작 크론 (로그는 data/logs에 기록)
+            (crontab -l 2>/dev/null | grep -v 'daily-restart' ; echo '0 19 * * * cd /home/ubuntu/chat-app && sudo docker-compose restart app >> /home/ubuntu/chat-app/data/logs/daily-restart.log 2>&1 # daily-restart') | crontab -
+            # 블로그 에이전트: 하루 3회 실행 (로그는 data/logs에 기록)
+            (crontab -l 2>/dev/null | grep -v 'blog-agent' ; echo '30 0 * * * cd /home/ubuntu/chat-app && sudo docker-compose --profile blog-run run --rm blog-agent >> /home/ubuntu/chat-app/data/logs/blog-agent.log 2>&1 # blog-agent'; echo '10 5 * * * cd /home/ubuntu/chat-app && sudo docker-compose --profile blog-run run --rm blog-agent >> /home/ubuntu/chat-app/data/logs/blog-agent.log 2>&1 # blog-agent'; echo '40 9 * * * cd /home/ubuntu/chat-app && sudo docker-compose --profile blog-run run --rm blog-agent >> /home/ubuntu/chat-app/data/logs/blog-agent.log 2>&1 # blog-agent') | crontab -

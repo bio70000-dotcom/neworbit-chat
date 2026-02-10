@@ -5,7 +5,14 @@
 - **URL**: https://log.neworbit.co.kr
 - **웹 인증**: 환경변수 `LOG_VIEWER_ACCESS_CODE`에 설정한 값으로 로그인
 - **API 인증**: `LOG_VIEWER_API_KEY`를 쿼리로 넘기면 쿠키 없이 조회 가능 (에이전트/자동화용)
-- **로그 소스**: 공유 볼륨 `/var/log/neworbit`에 쌓이는 파일 목록·마지막 N줄(최대 2000줄) 조회
+- **로그 소스**: 공유 디렉터리 `data/logs`(컨테이너 내 `/var/log/neworbit`)에 쌓이는 파일 조회
+
+| 파일 | 설명 |
+|------|------|
+| scheduler.log | 블로그 스케줄러 (주제 보고, 발행, 에러) |
+| daily-report.log | 일일점검 (매일 09:00 KST, 서비스 상태·리소스) |
+| daily-restart.log | 시스템 정기 재기동 (매일 04:00 KST 앱 재시작) |
+| blog-agent.log | 블로그 에이전트 크론 실행 (프로필 blog-run) |
 
 ## API (에이전트가 로그 직접 조회)
 

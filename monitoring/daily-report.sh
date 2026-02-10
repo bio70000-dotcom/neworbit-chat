@@ -2,13 +2,20 @@
 # ============================================
 # New Orbit 일일점검 리포트
 # 매일 09:00 KST 실행, 결과를 Telegram으로 전송
+# 로그: /var/log/neworbit/daily-report.log (log.neworbit.co.kr에서 조회)
 # ============================================
 
 TELEGRAM_BOT_TOKEN="8532715514:AAEEliO4yYTqpc2ZyeSk165SsGocPqsz7MM"
 TELEGRAM_CHAT_ID="6980402785"
 PROMETHEUS_URL="http://prometheus:9090"
 APP_URL="http://app:3000"
+LOG_FILE="/var/log/neworbit/daily-report.log"
 
+log_line() {
+    echo "$(date '+%Y-%m-%dT%H:%M:%S') $*" >> "$LOG_FILE" 2>/dev/null || true
+}
+
+log_line "daily-report start"
 # ---- 현재 시각 (KST) ----
 REPORT_TIME=$(TZ="Asia/Seoul" date '+%Y-%m-%d %H:%M KST')
 
@@ -130,4 +137,5 @@ curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" 
     -d text="${MESSAGE}" \
     > /dev/null 2>&1
 
+log_line "daily-report done status=${STATUS} cpu=${CPU}% mem=${MEM}% disk=${DISK}%"
 echo "[$(date)] Daily report sent to Telegram"

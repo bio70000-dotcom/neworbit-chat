@@ -126,6 +126,8 @@ services:
       dockerfile: Dockerfile.cron
     container_name: daily-report
     restart: always
+    volumes:
+      - ./data/logs:/var/log/neworbit
     depends_on:
       - prometheus
       - app
@@ -173,7 +175,7 @@ services:
       - REDIS_HOST=redis
       - DEBUG_LOG_PATH=/var/log/neworbit/scheduler.log
     volumes:
-      - neworbit-logs:/var/log/neworbit
+      - ./data/logs:/var/log/neworbit
     depends_on:
       - ghost
       - redis
@@ -188,7 +190,7 @@ services:
       - LOG_VIEWER_API_KEY=${LOG_VIEWER_API_KEY}
       - NODE_ENV=production
     volumes:
-      - neworbit-logs:/var/log/neworbit:ro
+      - ./data/logs:/var/log/neworbit:ro
     ports:
       - "3010:3010"
 
@@ -224,4 +226,3 @@ volumes:
   prometheus-data:
   grafana-data:
   ghost-data:
-  neworbit-logs:
