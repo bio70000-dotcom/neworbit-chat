@@ -88,7 +88,6 @@ async function processOne(topic, writer, options = {}) {
       // 사용자 이미지가 있으면 AI 본문 이미지 대신 사용
       if (userImageBuffers.length > 0) {
         bodyImageBuffers = userImageBuffers;
-        // Pexels도 사용자 이미지로 대체 (충분하면)
         pexelsImages = userImageBuffers.length >= 3 ? [] : (images.pexelsImages || []);
       } else {
         bodyImageBuffers = images.bodyImages;

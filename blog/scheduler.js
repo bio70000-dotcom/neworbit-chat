@@ -11,8 +11,16 @@
 
 require('dotenv').config();
 
+const fs = require('fs');
 const { WRITERS } = require('./writers');
 const { selectTopics } = require('./pipeline/topicSelector');
+
+function serverLog(msg, data = {}) {
+  const line = JSON.stringify({ ts: new Date().toISOString(), msg, ...data }) + '\n';
+  if (process.env.DEBUG_LOG_PATH) {
+    try { fs.appendFileSync(process.env.DEBUG_LOG_PATH, line); } catch (e) {}
+  }
+}
 const { processOne, initAgent, cleanupAgent } = require('./agent');
 const {
   sendMessage,
@@ -97,6 +105,18 @@ function generatePublishTimes(count) {
   }
 
   return times.sort((a, b) => a - b);
+}
+
+/** 테스트용: 현재(KST) 기준 다음 5분 단위부터 count개, intervalMinutes 간격 */
+function generateTestPublishTimes(count, intervalMinutes = 5) {
+  const now = getKSTDate();
+  const nowMin = now.getUTCHours() * 60 + now.getUTCMinutes();
+  const startMin = Math.ceil((nowMin + 1) / intervalMinutes) * intervalMinutes; // 다음 interval 경계
+  const times = [];
+  for (let i = 0; i < count; i++) {
+    times.push(startMin + i * intervalMinutes);
+  }
+  return times;
 }
 
 /**
@@ -199,22 +219,28 @@ async function reselectTopics(plan, numbers) {
 async function executeSchedule(schedule, userPhotos) {
   const results = [];
   const now = getKSTDate();
-  const todayBaseMin = now.getHours() * 60 + now.getMinutes();
+  const todayBaseMin = now.getUTCHours() * 60 + now.getUTCMinutes(); // KST 기준 현재 시각(분)
 
+  let displayOrder = 0;
   for (const item of schedule) {
-    // 발행 시간까지 대기
+    displayOrder += 1;
+    const timeStr = `${String(Math.floor(item.time / 60)).padStart(2, '0')}:${String(item.time % 60).padStart(2, '0')}`;
     const waitMin = item.time - todayBaseMin;
+
     if (waitMin > 0) {
       const h = Math.floor(waitMin / 60);
       const m = waitMin % 60;
       console.log(`[Scheduler] ${item.index}번 "${item.topic.keyword}" → ${h}시간 ${m}분 후 발행`);
-      await sendMessage(`⏳ ${item.index}번 "${item.topic.keyword}" → ${Math.floor(item.time / 60)}:${String(item.time % 60).padStart(2, '0')} KST 발행 예정`);
+      await sendMessage(`⏳ ${item.index}번 "${item.topic.keyword}" → ${timeStr} KST 발행 예정`);
       await new Promise((r) => setTimeout(r, waitMin * 60 * 1000));
+    } else {
+      console.log(`[Scheduler] ${item.index}번 "${item.topic.keyword}" → 예정 시각(${timeStr})이 지나 즉시 발행`);
+      await sendMessage(`⏩ ${item.index}번 "${item.topic.keyword}" → 예정 시각이 지나 즉시 발행합니다.`);
     }
 
-    // 이 글에 배정된 사용자 이미지 수집
+    // 이 글에 배정된 사용자 이미지 수집 (표시 순서=시간순 1~6번으로 매칭, item.index 아님)
     const assignedPhotos = userPhotos.filter(
-      (p) => p.postNumber === item.index || (!p.postNumber && !p.used)
+      (p) => p.postNumber === displayOrder || (!p.postNumber && !p.used)
     );
     const userImageBuffers = [];
     for (const photo of assignedPhotos) {
@@ -231,10 +257,12 @@ async function executeSchedule(schedule, userPhotos) {
 
     // 글 발행
     console.log(`\n[Scheduler] ${item.index}번 발행 시작: "${item.topic.keyword}" by ${item.writer.nickname}`);
+    serverLog('post.start', { displayOrder, timeStr, keyword: item.topic.keyword, writer: item.writer.nickname });
     try {
       const result = await processOne(item.topic, item.writer, { userImageBuffers });
       results.push(result);
       await sendPostResult(result);
+      serverLog('post.done', { displayOrder, timeStr, keyword: item.topic.keyword, success: true, title: result.title });
     } catch (e) {
       const failResult = {
         success: false,
@@ -244,6 +272,7 @@ async function executeSchedule(schedule, userPhotos) {
       };
       results.push(failResult);
       await sendPostResult(failResult);
+      serverLog('post.done', { displayOrder, timeStr, keyword: item.topic.keyword, success: false, error: e.message });
     }
 
     // 다음 글 전 30초 대기
@@ -254,11 +283,16 @@ async function executeSchedule(schedule, userPhotos) {
 }
 
 // ── 일일 사이클 ────────────────────────────
-async function dailyCycle() {
+/**
+ * @param {Object} [opts] - { test5Min: boolean } 테스트 시 5분 간격 6편
+ */
+async function dailyCycle(opts = {}) {
+  const test5Min = opts.test5Min === true;
   const dateStr = getKSTDateString();
   console.log(`\n${'═'.repeat(60)}`);
-  console.log(`[Scheduler] 일일 사이클 시작: ${dateStr}`);
+  console.log(`[Scheduler] 일일 사이클 시작: ${dateStr}${test5Min ? ' (테스트 5분 간격)' : ''}`);
   console.log('═'.repeat(60));
+  serverLog('dailyCycle.start', { test5Min, dateStr });
 
   try {
     // 이전 메시지 비우기
@@ -322,17 +356,31 @@ async function dailyCycle() {
       }
     }
 
-    // 4. 발행 스케줄 생성
-    const times = generatePublishTimes(WRITERS.length * POSTS_PER_WRITER);
+    // 4. 발행 스케줄 생성 (테스트 모드: 5분 간격 6편)
+    const times = test5Min
+      ? generateTestPublishTimes(WRITERS.length * POSTS_PER_WRITER, 5)
+      : generatePublishTimes(WRITERS.length * POSTS_PER_WRITER);
     const schedule = assignTimesToPosts(plan, times);
 
+    serverLog('schedule.built', {
+      test5Min,
+      schedule: schedule.map((it, i) => ({
+        line: i + 1,
+        time: `${String(Math.floor(it.time / 60)).padStart(2, '0')}:${String(it.time % 60).padStart(2, '0')}`,
+        keyword: it.topic.keyword,
+        writer: it.writer.nickname,
+      })),
+    });
+
     let scheduleMsg = '📋 <b>오늘의 발행 스케줄</b>\n━━━━━━━━━━━━━━━━━━\n';
+    let lineNum = 0;
     for (const item of schedule) {
+      lineNum += 1;
       const h = Math.floor(item.time / 60);
       const m = String(item.time % 60).padStart(2, '0');
-      scheduleMsg += `${h}:${m} - [${item.writer.nickname}] ${item.topic.keyword}\n`;
+      scheduleMsg += `${lineNum}. ${h}:${m} - [${item.writer.nickname}] ${item.topic.keyword}\n`;
     }
-    scheduleMsg += `━━━━━━━━━━━━━━━━━━\n이미지를 보내시면 글에 적용됩니다 (캡션에 번호)`;
+    scheduleMsg += `━━━━━━━━━━━━━━━━━━\n이미지를 보내시면 글에 적용됩니다 (캡션에 1~6 번호)${test5Min ? '\n(테스트: 5분 간격 발행)' : ''}`;
     await sendMessage(scheduleMsg);
 
     console.log('[Scheduler] 발행 스케줄:');
@@ -372,6 +420,13 @@ async function main() {
   }
 
   await sendMessage('🟢 Blog Scheduler가 시작되었습니다.');
+
+  // --test-5min: 즉시 주제 선정 → 텔레그램 보고 → 승인 후 5분 간격 6편 발행 (로그는 DEBUG_LOG_PATH에)
+  if (process.argv.includes('--test-5min')) {
+    console.log('[Scheduler] --test-5min: 테스트 모드 (5분 간격 6편)');
+    await dailyCycle({ test5Min: true });
+    process.exit(0);
+  }
 
   // --now 플래그: 즉시 일일 사이클 실행 (테스트용)
   if (process.argv.includes('--now')) {
