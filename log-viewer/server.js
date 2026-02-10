@@ -251,7 +251,11 @@ function getViewerHtml() {
     async function loadSources() {
       const r = await fetch('/api/sources');
       const data = await r.json();
-      sourceEl.innerHTML = '<option value="">로그 선택</option>' + (data.files || []).map(f => '<option value="' + escapeHtml(f) + '">' + escapeHtml(f) + '</option>').join('');
+      const files = data.files || [];
+      sourceEl.innerHTML = '<option value="">로그 선택</option>' + files.map(f => '<option value="' + escapeHtml(f) + '">' + escapeHtml(f) + '</option>').join('');
+      if (files.length === 0) {
+        contentEl.innerHTML = '<span class="warn">아직 로그 파일이 없습니다.</span>\n\nblog-scheduler가 한 번이라도 실행되면 scheduler.log가 여기에 표시됩니다.\n서버에서: docker-compose ps (스케줄러 실행 여부 확인)';
+      }
     }
 
     async function loadLog() {
