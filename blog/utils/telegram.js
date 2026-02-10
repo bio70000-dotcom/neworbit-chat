@@ -81,6 +81,21 @@ async function getUpdates(timeout = 30) {
 }
 
 /**
+ * "시작" / "주제 선정" 등 주제 선정 트리거 명령이 있는지 확인 (폴링용, getUpdates(timeout=0))
+ * @returns {Promise<boolean>} 트리거 명령이 있으면 true
+ */
+async function checkForStartCommand() {
+  const updates = await getUpdates(0);
+  const triggers = ['시작', '주제 선정', '주제선정', '시작해', '오늘 주제'];
+  for (const u of updates) {
+    const text = (u.message?.text || '').trim();
+    const lower = text.toLowerCase();
+    if (triggers.some((cmd) => lower === cmd || lower.includes(cmd))) return true;
+  }
+  return false;
+}
+
+/**
  * 기존 쌓인 메시지 비우기 (시작 시 호출)
  */
 async function flushUpdates() {
@@ -129,6 +144,11 @@ async function waitForResponse(timeoutMs = 4 * 60 * 60 * 1000) {
       // 전체 승인
       if (text === 'ok' || text === '승인' || text === 'ㅇㅋ') {
         return { type: 'approve', photos };
+      }
+
+      // 전체 취소 (오늘 발행 안 함)
+      if (text === '취소' || text === '취소해' || text === '전체 취소' || text === '취소할게') {
+        return { type: 'cancel', photos: [] };
       }
 
       // 전체 재선정
@@ -195,7 +215,7 @@ async function downloadPhoto(fileId) {
 
 /**
  * 일일 주제 보고 메시지 생성
- * @param {Array} plan [{writer, topics: [{keyword, source}]}]
+ * @param {Array} plan [{writer, topics: [{keyword, source, rationale?}]}]
  * @param {string} dateStr 날짜 문자열
  * @param {number[]|null} changedNumbers 변경된 번호들 (재선정 시)
  */
@@ -222,13 +242,27 @@ function formatDailyReport(plan, dateStr, changedNumbers = null) {
 
     for (const topic of entry.topics) {
       const changed = changedNumbers && changedNumbers.includes(num) ? ' ← 변경' : '';
-      msg += ` ${num}. [${topic.source}] ${topic.keyword}${changed}\n`;
+      let volSuffix = '';
+      if (topic.searchVolumeLabel && topic.searchVolumeLabel !== '-') {
+        if (typeof topic.searchVolume === 'number') {
+          volSuffix = topic.searchVolume >= 10000
+            ? ` (검색량: ${topic.searchVolumeLabel}, 약 ${(topic.searchVolume / 10000).toFixed(0)}만건)`
+            : ` (검색량: ${topic.searchVolumeLabel}, ${topic.searchVolume.toLocaleString()}건)`;
+        } else {
+          volSuffix = ` (검색량: ${topic.searchVolumeLabel})`;
+        }
+      }
+      msg += ` ${num}. [${topic.source}] ${topic.keyword}${volSuffix}${changed}\n`;
+      if (topic.rationale) {
+        msg += `   → ${topic.rationale}\n`;
+      }
       num++;
     }
   }
 
   msg += `\n━━━━━━━━━━━━━━━━━━\n`;
   msg += `<b>ok</b> - 전체 승인\n`;
+  msg += `<b>취소</b> - 전체 취소 (오늘 발행 안 함)\n`;
   msg += `<b>2,5 다시</b> - 해당 번호 재선정\n`;
   msg += `<b>전체 다시</b> - 전부 재선정\n`;
   msg += `사진 전송 시 글에 적용 (캡션에 번호)`;
@@ -282,6 +316,7 @@ module.exports = {
   getUpdates,
   flushUpdates,
   waitForResponse,
+  checkForStartCommand,
   downloadPhoto,
   formatDailyReport,
   sendPostResult,

@@ -6,52 +6,56 @@
 
 const NAVER_NEWS_URL = 'https://openapi.naver.com/v1/search/news.json';
 
-// 작가별 검색 시드 키워드
-const WRITER_SEEDS = {
+// 작가 id별 fallback 시드 (writer.categories 없을 때만 사용)
+const WRITER_SEEDS_FALLBACK = {
   dalsanchek: [
     '일상 추천', '힐링 방법', '여행 추천', '카페 추천',
     '자기계발 방법', '인간관계 꿀팁', '취미 추천', '감성',
-    '선물 추천', '데이트 코스', '독서 추천', '산책 명소',
-    '명상 방법', '습관 만들기', '자존감', '우정',
   ],
   textree: [
     'AI 서비스', 'IT 트렌드', '앱 추천', '생산성 도구',
     '재테크 방법', '투자 방법', '부업 추천', '효율 꿀팁',
-    '가젯 리뷰', '테크 비교', '플랫폼 추천', '개발 트렌드',
-    '자동화 도구', '경제 분석', '절약 방법', '디지털 노마드',
   ],
   bbittul: [
     'MBTI 유형', 'MZ세대 트렌드', '맛집 후기', '신상 리뷰',
-    '다이어트 방법', '운동 추천', '넷플릭스 추천', '게임 추천',
-    '패션 트렌드', '뷰티 꿀팁', '자취 꿀팁', '핫플레이스',
-    '밈 유행', '스트레스 해소', '꿀팁 모음', '가성비',
+    '꿀팁 모음', '가성비', '넷플릭스 추천', '게임 추천',
   ],
 };
 
-// 기본 시드 (작가 미지정 시)
 const DEFAULT_SEEDS = [
-  '추천', '방법', '꿀팁', '후기', '비교',
-  '트렌드', '인기', '화제', '핫한', '요즘',
+  '추천', '방법', '꿀팁', '후기', '비교', '트렌드', '인기', '화제',
 ];
 
-// 작가별 관련도 매칭용 키워드 (제목에 포함되면 해당 작가 주제로 적합)
-const WRITER_MATCH_KEYWORDS = {
-  dalsanchek: [
-    '일상', '힐링', '여행', '카페', '자기계발', '인간관계', '취미', '감성',
-    '선물', '데이트', '독서', '산책', '명상', '습관', '자존감', '우정',
-    '감정', '관계', '라이프스타일', '데이트', '코스', '추천', '방법',
-  ],
-  textree: [
-    'AI', 'IT', '테크', '앱', '생산성', '재테크', '투자', '부업', '효율',
-    '가젯', '리뷰', '플랫폼', '개발', '자동화', '경제', '절약', '디지털',
-    '서비스', '기술', '출시', '비교', '분석', '노마드',
-  ],
-  bbittul: [
-    'MBTI', 'MZ', '맛집', '신상', '다이어트', '운동', '넷플릭스', '게임',
-    '패션', '뷰티', '자취', '핫플', '밈', '유행', '꿀팁', '가성비',
-    '트렌드', '후기', '리뷰', '먹거리', '핫한', '화제',
-  ],
+// 작가 id별 fallback 매칭 키워드 (writer.categories 없을 때만)
+const WRITER_MATCH_FALLBACK = {
+  dalsanchek: ['일상', '힐링', '여행', '카페', '자기계발', '인간관계', '취미', '감성', '라이프스타일'],
+  textree: ['AI', 'IT', '테크', '앱', '생산성', '재테크', '투자', '부업', '효율', '가젯', '리뷰'],
+  bbittul: ['MBTI', 'MZ', '맛집', '신상', '꿀팁', '가성비', '트렌드', '후기', '먹거리'],
 };
+
+/** writer.categories 기반으로 검색 시드 생성 */
+function buildSeedsFromWriter(writer) {
+  const categories = writer?.categories;
+  if (Array.isArray(categories) && categories.length > 0) {
+    const suffixes = [' 추천', ' 방법', ' 꿀팁', ' 트렌드', ' 후기'];
+    const seeds = [];
+    for (const c of categories) {
+      seeds.push(c);
+      for (const s of suffixes) seeds.push(c + s);
+    }
+    return seeds;
+  }
+  return WRITER_SEEDS_FALLBACK[writer?.id] || DEFAULT_SEEDS;
+}
+
+/** writer.categories 기반으로 매칭 키워드 생성 */
+function buildMatchKeywordsFromWriter(writer) {
+  const categories = writer?.categories;
+  if (Array.isArray(categories) && categories.length > 0) {
+    return [...categories, '추천', '방법', '꿀팁', '후기', '리뷰', '트렌드'];
+  }
+  return WRITER_MATCH_FALLBACK[writer?.id] || DEFAULT_SEEDS;
+}
 
 function stripHtml(str) {
   if (!str) return '';
@@ -60,10 +64,10 @@ function stripHtml(str) {
 
 /**
  * 네이버 뉴스에서 작가 분야에 맞는 블로그 주제 후보 추출
- * @param {string} writerId - 작가 ID (dalsanchek, textree, bbittul)
+ * @param {Object} writer - 작가 객체 (writers.js). categories 사용해 시드/매칭 키워드 생성
  * @returns {Promise<Array<{keyword: string, category: string}>>}
  */
-async function getNaverNewsTopics(writerId) {
+async function getNaverNewsTopics(writer) {
   const clientId = process.env.NAVER_CLIENT_ID;
   const clientSecret = process.env.NAVER_CLIENT_SECRET;
 
@@ -72,8 +76,7 @@ async function getNaverNewsTopics(writerId) {
     return [];
   }
 
-  // 작가별 시드에서 랜덤 5개 선택 (후보 풀 확대)
-  const writerSeeds = WRITER_SEEDS[writerId] || DEFAULT_SEEDS;
+  const writerSeeds = buildSeedsFromWriter(writer);
   const seeds = [];
   const shuffled = [...writerSeeds].sort(() => Math.random() - 0.5);
   for (let i = 0; i < 5 && i < shuffled.length; i++) {
@@ -126,8 +129,7 @@ async function getNaverNewsTopics(writerId) {
     }
   }
 
-  // 작가 전문 분야 관련도로 정렬 (높을수록 해당 작가에 적합)
-  const matchKws = WRITER_MATCH_KEYWORDS[writerId] || [];
+  const matchKws = buildMatchKeywordsFromWriter(writer);
   const scored = unique.map((t) => {
     const lower = t.keyword.toLowerCase();
     const score = matchKws.filter((kw) => lower.includes(kw.toLowerCase())).length;

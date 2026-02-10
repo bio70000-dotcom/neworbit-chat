@@ -1,48 +1,69 @@
 /**
  * 글감 선정 모듈
- * 작가별 전문 분야에 맞는 주제를 선정
+ * 작가별 전문 분야(writers.js categories·bio)에 맞는 주제를 선정
  *
- * 소스 선택 확률:
- *  - 시즌 캘린더: 40%
- *  - 네이버 뉴스: 30%
- *  - Google Trends: 30%
+ * 일일 6편 시 소스 할당: 시즌 2, 네이버 뉴스 2, 구글 트렌드 2 (균형 유지)
  */
 
 const calendar = require('../calendar.json');
 const { getRelevantTrends } = require('../utils/googleTrends');
 const { getNaverNewsTopics } = require('../utils/naverTopics');
 const { isDuplicate } = require('../utils/dedup');
+const { getNaverBlogSearchTotal, getSearchVolumeLabel } = require('../utils/searchVolume');
 
-// ── 작가별 카테고리 → 검색 키워드 매핑 ──────────────────
-
-const WRITER_SEARCH_KEYWORDS = {
-  dalsanchek: [
-    '라이프스타일', '일상', '감성', '인간관계', '자기계발', '여행',
-    '카페', '힐링', '취미', '선물', '데이트', '산책', '독서',
-    '자존감', '명상', '감정', '관계', '우정', '습관',
-  ],
-  textree: [
-    'IT', '테크', '생산성', '경제', '리뷰', '앱',
-    'AI', '개발', '가젯', '서비스', '투자', '재테크',
-    '부업', '효율', '자동화', '비교', '분석', '플랫폼',
-  ],
-  bbittul: [
-    '트렌드', '엔터', 'MBTI', '먹거리', '꿀팁', '후기',
-    '맛집', '신상', 'MZ', '밈', '게임', '유행',
-    '넷플릭스', '다이어트', '운동', '패션', '뷰티', '핫플',
-  ],
+// 카테고리별 확장 키워드 (작가 categories만으로는 부족할 때 보강)
+const CATEGORY_EXPANSION = {
+  라이프스타일: ['일상', '힐링', '카페', '취미', '데이트', '산책', '독서', '선물'],
+  감성: ['감정', '관계', '우정', '명상', '자존감', '습관'],
+  인간관계: ['관계', '우정', '소통', '데이트'],
+  자기계발: ['습관', '목표', '독서', '효율'],
+  여행: ['맛집', '핫플', '데이트', '휴가'],
+  IT: ['앱', 'AI', '개발', '가젯', '서비스', '자동화'],
+  테크: ['앱', 'AI', '가젯', '플랫폼', '비교'],
+  생산성: ['효율', '자동화', '도구', '꿀팁'],
+  경제: ['재테크', '투자', '부업', '절약'],
+  리뷰: ['비교', '후기', '추천', '가성비'],
+  트렌드: ['유행', 'MZ', '밈', '핫한', '화제'],
+  엔터: ['넷플릭스', '드라마', '영화', '게임', '음악'],
+  MBTI: ['성격', '심리', '유형'],
+  먹거리: ['맛집', '후기', '추천', '꿀팁'],
+  꿀팁: ['방법', '추천', '후기', '가성비'],
 };
+
+/**
+ * 작가 객체(writers.js)에서 검색/매칭용 키워드 배열 생성
+ * categories를 기준으로 하고, bio에서 추출 가능한 단어는 사용하지 않음(단순화)
+ */
+function getWriterKeywords(writer) {
+  const id = writer?.id;
+  const categories = writer?.categories;
+  if (Array.isArray(categories) && categories.length > 0) {
+    const expanded = new Set(categories);
+    for (const cat of categories) {
+      const extra = CATEGORY_EXPANSION[cat];
+      if (extra) extra.forEach((k) => expanded.add(k));
+    }
+    return [...expanded];
+  }
+  // fallback: id 기반 기본 키워드
+  const fallback = {
+    dalsanchek: ['라이프스타일', '감성', '인간관계', '자기계발', '여행', '일상', '카페', '힐링'],
+    textree: ['IT', '테크', '생산성', '경제', '리뷰', '앱', 'AI', '재테크'],
+    bbittul: ['트렌드', '엔터', 'MBTI', '먹거리', '꿀팁', '맛집', '후기', 'MZ'],
+  };
+  return fallback[id] || ['라이프스타일'];
+}
 
 
 /**
  * 시즌 캘린더에서 작가에 맞는 주제 찾기
  */
-function getSeasonalTopics(writerId) {
+function getSeasonalTopics(writer) {
   const now = new Date();
   const month = String(now.getMonth() + 1);
   const day = now.getDate();
   const year = now.getFullYear();
-  const writerKws = WRITER_SEARCH_KEYWORDS[writerId] || [];
+  const writerKws = getWriterKeywords(writer);
 
   const monthEvents = calendar[month] || [];
 
@@ -50,7 +71,6 @@ function getSeasonalTopics(writerId) {
     .filter((event) => {
       const daysUntilEvent = event.publishBefore - day;
       if (daysUntilEvent < 0 || daysUntilEvent > 21) return false;
-      // 작가 분야와 시즌 키워드가 관련 있는지 체크
       const kw = event.keyword.toLowerCase();
       const cat = (event.category || '').toLowerCase();
       return writerKws.some((w) => kw.includes(w.toLowerCase()) || cat.includes(w.toLowerCase()));
@@ -63,57 +83,67 @@ function getSeasonalTopics(writerId) {
 }
 
 /**
- * Google Trends에서 작가 분야에 맞는 트렌드 가져오기
- * 매칭되는 트렌드가 없으면 null (작가와 무관한 트렌드 할당 방지)
+ * Google Trends에서 작가 분야에 맞는 트렌드 1개
  */
-async function getTrendTopic(writerId, excludeKeywords = new Set()) {
+async function getTrendTopic(writer, excludeKeywords = new Set()) {
+  const topics = await getTrendTopics(writer, excludeKeywords, 1);
+  return topics[0] || null;
+}
+
+/**
+ * Google Trends에서 작가 분야에 맞는 트렌드 최대 maxCount개
+ */
+async function getTrendTopics(writer, excludeKeywords = new Set(), maxCount = 2) {
   try {
     const trends = await getRelevantTrends();
-    if (trends.length === 0) return null;
+    if (trends.length === 0) return [];
 
-    const writerKws = WRITER_SEARCH_KEYWORDS[writerId] || [];
-
+    const writerKws = getWriterKeywords(writer);
     const matched = trends.filter((t) => {
       const lower = t.toLowerCase();
       return writerKws.some((kw) => lower.includes(kw.toLowerCase()));
     });
+    const candidates = matched.length > 0 ? matched : trends.slice(0, 5);
 
-    // 작가 분야와 매칭되는 트렌드만 사용. 없으면 null (다른 소스 시도)
-    const candidates = matched.length > 0 ? matched : [];
-
+    const result = [];
     for (const keyword of candidates) {
+      if (result.length >= maxCount) break;
       if (excludeKeywords.has(keyword)) continue;
       const dup = await isDuplicate(keyword);
-      if (!dup) {
-        return { keyword, category: 'trending', source: 'google_trends' };
-      }
+      if (!dup) result.push({ keyword, category: 'trending', source: 'google_trends' });
     }
-
-    return null;
+    return result;
   } catch (e) {
     console.warn(`[TopicSelector] 트렌드 수집 실패: ${e.message}`);
-    return null;
+    return [];
   }
 }
 
 /**
- * 네이버 뉴스에서 작가 분야에 맞는 주제 가져오기
+ * 네이버 뉴스에서 작가 분야에 맞는 주제 1개
  */
-async function getNaverTopic(writerId, excludeKeywords = new Set()) {
-  try {
-    const topics = await getNaverNewsTopics(writerId);
-    if (topics.length === 0) return null;
+async function getNaverTopic(writer, excludeKeywords = new Set()) {
+  const topics = await getNaverTopics(writer, excludeKeywords, 1);
+  return topics[0] || null;
+}
 
-    for (const topic of topics) {
+/**
+ * 네이버 뉴스에서 작가 분야에 맞는 주제 최대 maxCount개
+ */
+async function getNaverTopics(writer, excludeKeywords = new Set(), maxCount = 2) {
+  try {
+    const all = await getNaverNewsTopics(writer);
+    const result = [];
+    for (const topic of all) {
+      if (result.length >= maxCount) break;
       if (excludeKeywords.has(topic.keyword)) continue;
       const dup = await isDuplicate(topic.keyword);
-      if (!dup) return topic;
+      if (!dup) result.push(topic);
     }
-
-    return null;
+    return result;
   } catch (e) {
     console.warn(`[TopicSelector] 네이버 뉴스 주제 수집 실패: ${e.message}`);
-    return null;
+    return [];
   }
 }
 
@@ -121,19 +151,19 @@ async function getNaverTopic(writerId, excludeKeywords = new Set()) {
  * 소스 목록에서 순서대로 시도
  * @param {Set<string>} [excludeKeywords] - 오늘 이미 선정된 키워드 (중복 방지)
  */
-async function trySourcesInOrder(sources, writerId, excludeKeywords = new Set()) {
+async function trySourcesInOrder(sources, writer, excludeKeywords = new Set()) {
   for (const source of sources) {
     let topic = null;
 
     switch (source) {
       case 'google_trends':
-        topic = await getTrendTopic(writerId, excludeKeywords);
+        topic = await getTrendTopic(writer, excludeKeywords);
         break;
       case 'naver_news':
-        topic = await getNaverTopic(writerId, excludeKeywords);
+        topic = await getNaverTopic(writer, excludeKeywords);
         break;
       case 'seasonal': {
-        const seasonal = getSeasonalTopics(writerId);
+        const seasonal = getSeasonalTopics(writer);
         for (const s of seasonal) {
           if (excludeKeywords.has(s.keyword)) continue;
           const dup = await isDuplicate(s.keyword);
@@ -155,12 +185,12 @@ async function trySourcesInOrder(sources, writerId, excludeKeywords = new Set())
   for (const fb of fallbackOrder) {
     let topic = null;
     if (fb === 'seasonal') {
-      const seasonal = getSeasonalTopics(writerId).filter((s) => !excludeKeywords.has(s.keyword));
+      const seasonal = getSeasonalTopics(writer).filter((s) => !excludeKeywords.has(s.keyword));
       if (seasonal.length > 0) topic = seasonal[0];
     } else if (fb === 'naver_news') {
-      topic = await getNaverTopic(writerId, excludeKeywords);
+      topic = await getNaverTopic(writer, excludeKeywords);
     } else {
-      topic = await getTrendTopic(writerId, excludeKeywords);
+      topic = await getTrendTopic(writer, excludeKeywords);
     }
     if (topic) {
       console.log(`[TopicSelector] 선정 (fallback): [${topic.source}] "${topic.keyword}"`);
@@ -168,41 +198,156 @@ async function trySourcesInOrder(sources, writerId, excludeKeywords = new Set())
     }
   }
 
-  // 정말 아무것도 없을 때 - 작가 카테고리 기반 기본 주제
-  const writerKws = WRITER_SEARCH_KEYWORDS[writerId] || ['라이프스타일'];
+  const writerKws = getWriterKeywords(writer);
   const defaultKeyword = `${new Date().getFullYear()}년 ${writerKws[0]} 트렌드`;
   console.log(`[TopicSelector] 선정 (기본): "${defaultKeyword}"`);
   return { keyword: defaultKeyword, category: writerKws[0], source: 'default' };
 }
 
 /**
- * 1편의 글감 선정 (작가 분야 기반)
+ * 지정한 소스에서만 1개 주제 선정 (다른 소스로 넘어가지 않음)
+ */
+async function getTopicFromSource(writer, source, excludeKeywords = new Set()) {
+  let topic = null;
+  switch (source) {
+    case 'seasonal': {
+      const seasonal = getSeasonalTopics(writer);
+      for (const s of seasonal) {
+        if (excludeKeywords.has(s.keyword)) continue;
+        const dup = await isDuplicate(s.keyword);
+        if (!dup) { topic = s; break; }
+      }
+      break;
+    }
+    case 'naver_news':
+      topic = await getNaverTopic(writer, excludeKeywords);
+      break;
+    case 'google_trends':
+      topic = await getTrendTopic(writer, excludeKeywords);
+      break;
+    default:
+      break;
+  }
+  return topic;
+}
+
+/** AI 선정용 후보 풀: 시즌 6 + 네이버 6 + 트렌드 6 (작가당 각 2개씩, 전역 중복 제외) */
+async function getCandidatesPool(writers, postsPerWriter = 2) {
+  const pool = [];
+  const perWriter = 2;
+  const usedGlobal = new Set();
+
+  for (const writer of writers) {
+    const seasonal = getSeasonalTopics(writer);
+    let n = 0;
+    for (const s of seasonal) {
+      if (n >= perWriter) break;
+      if (usedGlobal.has(s.keyword)) continue;
+      const dup = await isDuplicate(s.keyword);
+      if (!dup) {
+        pool.push({ keyword: s.keyword, category: s.category, source: 'seasonal', writerId: writer.id });
+        usedGlobal.add(s.keyword);
+        n++;
+      }
+    }
+
+    const naverList = await getNaverTopics(writer, usedGlobal, perWriter);
+    for (const t of naverList) {
+      pool.push({ keyword: t.keyword, category: t.category, source: 'naver_news', writerId: writer.id });
+      usedGlobal.add(t.keyword);
+    }
+
+    const trendList = await getTrendTopics(writer, usedGlobal, perWriter);
+    for (const t of trendList) {
+      pool.push({ keyword: t.keyword, category: t.category || 'trending', source: 'google_trends', writerId: writer.id });
+      usedGlobal.add(t.keyword);
+    }
+  }
+
+  console.log(`[TopicSelector] 후보 풀: ${pool.length}개 (시즌/네이버/트렌드)`);
+  return pool;
+}
+
+/** 후보 풀에 네이버 검색량(검색결과 수) 대리 지표 추가 */
+async function enrichPoolWithSearchVolume(pool) {
+  const delayMs = 150;
+  for (const c of pool) {
+    try {
+      const total = await getNaverBlogSearchTotal(c.keyword);
+      c.searchVolume = total;
+      c.searchVolumeLabel = getSearchVolumeLabel(total);
+    } catch (e) {
+      c.searchVolume = null;
+      c.searchVolumeLabel = '-';
+    }
+    if (delayMs > 0) await new Promise((r) => setTimeout(r, delayMs));
+  }
+  console.log(`[TopicSelector] 검색량 지표 부여 완료`);
+  return pool;
+}
+
+/**
+ * 일일 6편 주제 선정 — AI 추론으로 선정 + 선정 이유
+ * @param {Array} writers - 작가 배열 (writers.js WRITERS)
+ * @param {number} postsPerWriter - 작가당 글 수 (2)
+ * @returns {Promise<Array<{writer, topics}>>} plan (각 topic에 rationale 포함)
+ */
+async function selectDailyTopicsWithQuota(writers, postsPerWriter = 2) {
+  const { selectTopicsWithAI } = require('./topicSelectAI');
+  let pool = await getCandidatesPool(writers, postsPerWriter);
+  if (pool.length < 6) {
+    console.warn('[TopicSelector] 후보 부족, 기존 랜덤 할당으로 보충');
+    return selectDailyTopicsWithQuotaFallback(writers, postsPerWriter);
+  }
+  await enrichPoolWithSearchVolume(pool);
+  const plan = await selectTopicsWithAI(pool, writers);
+  if (!plan || plan.every((p) => p.topics.length === 0)) {
+    console.warn('[TopicSelector] AI 선정 실패, fallback');
+    return selectDailyTopicsWithQuotaFallback(writers, postsPerWriter);
+  }
+  return plan;
+}
+
+/** AI 미사용 시 fallback: 기존 랜덤 할당 (시즌2/네이버2/트렌드2) */
+async function selectDailyTopicsWithQuotaFallback(writers, postsPerWriter = 2) {
+  const total = writers.length * postsPerWriter;
+  const sourceQuota = ['seasonal', 'seasonal', 'naver_news', 'naver_news', 'google_trends', 'google_trends'];
+  for (let i = sourceQuota.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [sourceQuota[i], sourceQuota[j]] = [sourceQuota[j], sourceQuota[i]];
+  }
+  const usedKeywords = new Set();
+  const plan = writers.map((w) => ({ writer: w, topics: [] }));
+
+  for (let slot = 0; slot < total; slot++) {
+    const writerIndex = Math.floor(slot / postsPerWriter);
+    const writer = writers[writerIndex];
+    const source = sourceQuota[slot];
+    let topic = await getTopicFromSource(writer, source, usedKeywords);
+    if (!topic) {
+      const other = ['seasonal', 'naver_news', 'google_trends'].filter((s) => s !== source);
+      topic = await trySourcesInOrder(other, writer, usedKeywords);
+    }
+    if (!topic) {
+      const writerKws = getWriterKeywords(writer);
+      topic = { keyword: `${new Date().getFullYear()}년 ${writerKws[0]} 트렌드`, category: writerKws[0], source: 'default' };
+    }
+    plan[writerIndex].topics.push(topic);
+    usedKeywords.add(topic.keyword);
+  }
+  return plan;
+}
+
+/**
+ * 1편의 글감 선정 (작가 분야 기반) — 재선정 등 단일 주제 필요 시 사용
  * @param {Object} writer - 작가 객체 (writers.js)
  * @param {{ excludeKeywords?: Set<string> }} [options] - 오늘 이미 쓴 키워드 (중복 방지)
  */
 async function selectTopics(writer, options = {}) {
-  const writerId = writer?.id || 'dalsanchek';
   const excludeKeywords = options.excludeKeywords || new Set();
-  const roll = Math.random();
-
-  let primarySource;
-  let fallbackSources;
-
-  if (roll < 0.40) {
-    primarySource = 'seasonal';
-    fallbackSources = ['seasonal', 'naver_news', 'google_trends'];
-  } else if (roll < 0.70) {
-    primarySource = 'naver_news';
-    fallbackSources = ['naver_news', 'google_trends', 'seasonal'];
-  } else {
-    primarySource = 'google_trends';
-    fallbackSources = ['google_trends', 'naver_news', 'seasonal'];
-  }
-
-  console.log(`[TopicSelector] 작가: ${writer?.nickname || writerId}, 소스: ${primarySource} (roll: ${roll.toFixed(2)})`);
-
-  const topic = await trySourcesInOrder(fallbackSources, writerId, excludeKeywords);
+  const fallbackSources = ['seasonal', 'naver_news', 'google_trends'];
+  const topic = await trySourcesInOrder(fallbackSources, writer, excludeKeywords);
   return [topic];
 }
 
-module.exports = { selectTopics };
+module.exports = { selectTopics, selectDailyTopicsWithQuota };

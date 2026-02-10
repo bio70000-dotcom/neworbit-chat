@@ -14,7 +14,7 @@ require('dotenv').config();
 const fs = require('fs');
 const { WRITERS } = require('./writers');
 
-const { selectTopics } = require('./pipeline/topicSelector');
+const { selectTopics, selectDailyTopicsWithQuota } = require('./pipeline/topicSelector');
 
 function serverLog(msg, data = {}) {
   const line = JSON.stringify({ ts: new Date().toISOString(), msg, ...data }) + '\n';
@@ -27,6 +27,7 @@ const {
   sendMessage,
   flushUpdates,
   waitForResponse,
+  checkForStartCommand,
   downloadPhoto,
   formatDailyReport,
   sendPostResult,
@@ -194,21 +195,9 @@ function assignTimesToPosts(plan, times) {
 }
 
 // ── 주제 선정 ──────────────────────────────
+/** 일일 6편: 시즌 2 + 네이버 뉴스 2 + 구글 트렌드 2 균형 할당 */
 async function selectDailyTopics() {
-  const plan = [];
-  const usedKeywords = new Set();
-
-  for (const writer of WRITERS) {
-    const topics = [];
-    for (let i = 0; i < POSTS_PER_WRITER; i++) {
-      const [topic] = await selectTopics(writer, { excludeKeywords: usedKeywords });
-      topics.push(topic);
-      usedKeywords.add(topic.keyword);
-    }
-    plan.push({ writer, topics });
-  }
-
-  return plan;
+  return selectDailyTopicsWithQuota(WRITERS, POSTS_PER_WRITER);
 }
 
 /**
@@ -371,6 +360,11 @@ async function dailyCycle(opts = {}) {
           console.log('[Scheduler] 승인됨');
           break;
 
+        case 'cancel':
+          console.log('[Scheduler] 사용자 취소 - 오늘 발행 안 함');
+          await sendMessage('🛑 오늘 발행을 취소했습니다.');
+          return;
+
         case 'reject_some':
           console.log(`[Scheduler] ${response.numbers.join(',')}번 재선정 요청`);
           plan = await reselectTopics(plan, response.numbers);
@@ -464,7 +458,7 @@ async function main() {
     process.exit(1);
   }
 
-  await sendMessage('🟢 Blog Scheduler가 시작되었습니다.');
+  await sendMessage('🟢 Blog Scheduler가 시작되었습니다.\n텔레그램에서 <b>시작</b> 또는 <b>주제 선정</b> 입력 시 즉시 주제 선정을 시작합니다.');
 
   // --test-5min: 즉시 주제 선정 → 텔레그램 보고 → 승인 후 5분 간격 6편 발행 (로그는 DEBUG_LOG_PATH에)
   if (process.argv.includes('--test-5min')) {
@@ -480,13 +474,32 @@ async function main() {
     process.exit(0);
   }
 
-  // 무한 루프: 매일 09:00 KST에 실행
+  // 무한 루프: 매일 09:00 KST 또는 텔레그램 "시작" 명령 시 실행
+  const POLL_CHUNK_MS = 60 * 1000; // 1분마다 명령 확인
+
   while (true) {
     const waitMs = msUntilKST(9, 0);
     const waitHours = (waitMs / 1000 / 60 / 60).toFixed(1);
-    console.log(`[Scheduler] 다음 실행까지 ${waitHours}시간 대기 (09:00 KST)`);
+    console.log(`[Scheduler] 다음 실행까지 ${waitHours}시간 대기 (09:00 KST 또는 텔레그램 "시작" 명령)`);
 
-    await new Promise((r) => setTimeout(r, waitMs));
+    let elapsed = 0;
+    let triggeredByCommand = false;
+
+    while (elapsed < waitMs) {
+      await new Promise((r) => setTimeout(r, POLL_CHUNK_MS));
+      elapsed += POLL_CHUNK_MS;
+
+      try {
+        if (await checkForStartCommand()) {
+          triggeredByCommand = true;
+          console.log('[Scheduler] 사용자 "시작" 명령 수신');
+          await sendMessage('📌 주제 선정을 시작합니다.');
+          break;
+        }
+      } catch (e) {
+        console.warn(`[Scheduler] 시작 명령 확인 중 오류: ${e.message}`);
+      }
+    }
 
     await dailyCycle();
   }
