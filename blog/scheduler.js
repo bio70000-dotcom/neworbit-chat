@@ -32,34 +32,39 @@ const MIN_GAP_MINUTES = 60;           // 포스트 간 최소 간격 (분)
 const SAME_WRITER_GAP_MINUTES = 180;  // 같은 작가 글 간 최소 간격 (분)
 const APPROVAL_TIMEOUT_MS = 4 * 60 * 60 * 1000; // 승인 대기 최대 4시간
 
-// ── KST 시간 유틸 ─────────────────────────
+// ── KST 시간 유틸 (UTC+9, 서버 타임존 무관) ─────────────────────────
+const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
+
+/** 현재 시각을 KST 기준 날짜로 (UTC getter 사용 시 KST 값) */
 function getKSTDate() {
-  return new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Seoul' }));
+  return new Date(Date.now() + KST_OFFSET_MS);
 }
 
 function getKSTHour() {
-  return getKSTDate().getHours();
+  return getKSTDate().getUTCHours();
 }
 
 function getKSTDateString() {
   const d = getKSTDate();
   const days = ['일', '월', '화', '수', '목', '금', '토'];
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} (${days[d.getDay()]})`;
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')} (${days[d.getUTCDay()]})`;
 }
 
+/** 다음 지정 시각(KST)까지 밀리초. 09:00 KST = 00:00 UTC */
 function msUntilKST(hour, minute = 0) {
-  const now = getKSTDate();
-  const target = new Date(now);
-  target.setHours(hour, minute, 0, 0);
-
-  if (target <= now) {
-    target.setDate(target.getDate() + 1);
-  }
-
-  // KST -> UTC 보정
-  const nowUTC = Date.now();
-  const kstOffset = now.getTime() - nowUTC;
-  return target.getTime() - kstOffset - nowUTC;
+  const now = new Date();
+  const utcHour = (hour - 9 + 24) % 24;
+  let targetUTC = new Date(Date.UTC(
+    now.getUTCFullYear(),
+    now.getUTCMonth(),
+    now.getUTCDate(),
+    utcHour,
+    minute,
+    0,
+    0
+  ));
+  if (targetUTC <= now) targetUTC.setUTCDate(targetUTC.getUTCDate() + 1);
+  return targetUTC.getTime() - now.getTime();
 }
 
 // ── 랜덤 발행 시간 생성 ────────────────────

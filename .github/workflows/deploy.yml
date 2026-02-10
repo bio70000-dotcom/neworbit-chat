@@ -38,6 +38,8 @@ jobs:
             echo "NAVER_CLIENT_SECRET=${{ secrets.NAVER_CLIENT_SECRET }}" >> .env
             echo "CLAUDE_API_KEY=${{ secrets.CLAUDE_API_KEY }}" >> .env
             echo "GHOST_ADMIN_API_KEY=${{ secrets.GHOST_ADMIN_API_KEY }}" >> .env
+            echo "TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}" >> .env
+            echo "TELEGRAM_CHAT_ID=${{ secrets.TELEGRAM_CHAT_ID }}" >> .env
             # 도커 재시작
             sudo docker-compose down
             sudo docker-compose up -d --build
