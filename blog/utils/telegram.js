@@ -12,8 +12,11 @@ const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
 let lastUpdateId = 0;
 
+const SEND_MESSAGE_RETRIES = 2;
+const SEND_MESSAGE_RETRY_DELAY_MS = 1500;
+
 /**
- * Telegram 메시지 전송 (HTML 파싱)
+ * Telegram 메시지 전송 (HTML 파싱). 실패 시 최대 2회 재시도.
  */
 async function sendMessage(text) {
   if (!BOT_TOKEN || !CHAT_ID) {
@@ -21,26 +24,39 @@ async function sendMessage(text) {
     return null;
   }
 
-  try {
-    const res = await fetch(`${TELEGRAM_API}${BOT_TOKEN}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: CHAT_ID,
-        text,
-        parse_mode: 'HTML',
-      }),
-    });
+  let lastError = null;
+  for (let attempt = 0; attempt <= SEND_MESSAGE_RETRIES; attempt++) {
+    try {
+      const res = await fetch(`${TELEGRAM_API}${BOT_TOKEN}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: CHAT_ID,
+          text,
+          parse_mode: 'HTML',
+        }),
+      });
 
-    const data = await res.json();
-    if (!data.ok) {
-      console.warn(`[Telegram] sendMessage failed: ${data.description} (error_code: ${data.error_code || 'n/a'})`);
+      const data = await res.json();
+      if (data.ok) return data;
+      lastError = data;
+      if (attempt < SEND_MESSAGE_RETRIES) {
+        console.warn(`[Telegram] sendMessage failed (attempt ${attempt + 1}/${SEND_MESSAGE_RETRIES + 1}): ${data.description}, retrying...`);
+        await new Promise((r) => setTimeout(r, SEND_MESSAGE_RETRY_DELAY_MS));
+      } else {
+        console.warn(`[Telegram] sendMessage failed: ${data.description} (error_code: ${data.error_code || 'n/a'})`);
+      }
+    } catch (e) {
+      lastError = e;
+      if (attempt < SEND_MESSAGE_RETRIES) {
+        console.warn(`[Telegram] sendMessage error (attempt ${attempt + 1}/${SEND_MESSAGE_RETRIES + 1}): ${e.message}, retrying...`);
+        await new Promise((r) => setTimeout(r, SEND_MESSAGE_RETRY_DELAY_MS));
+      } else {
+        console.warn(`[Telegram] sendMessage error: ${e.message}`);
+      }
     }
-    return data;
-  } catch (e) {
-    console.warn(`[Telegram] sendMessage error: ${e.message}`);
-    return null;
   }
+  return null;
 }
 
 /**
@@ -128,17 +144,18 @@ async function checkForSchedulerCommand() {
 }
 
 /**
- * 기존 쌓인 메시지 비우기 (시작 시 호출)
+ * 대기 중인 업데이트만 소비 (처리하지 않고 offset만 진행).
+ * 일일 사이클 시작 시 이전에 쌓인 승인/취소 등이 당일 플로에 섞이지 않도록 호출.
+ * offset=lastUpdateId+1 로 호출해, 사용자 메시지를 유실하지 않도록 함.
  */
 async function flushUpdates() {
   try {
-    const res = await fetch(`${TELEGRAM_API}${BOT_TOKEN}/getUpdates?offset=-1&timeout=0`);
-    const data = await res.json();
-    if (data.ok && data.result && data.result.length > 0) {
-      lastUpdateId = data.result[data.result.length - 1].update_id;
+    const updates = await getUpdates(0);
+    if (updates.length > 0) {
+      console.log(`[Telegram] flushUpdates: ${updates.length} pending consumed (lastUpdateId advanced)`);
     }
   } catch (e) {
-    console.warn(`[Telegram] flush 에러: ${e.message}`);
+    console.warn(`[Telegram] flushUpdates error: ${e.message}`);
   }
 }
 
