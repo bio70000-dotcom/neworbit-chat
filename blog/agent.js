@@ -126,8 +126,9 @@ async function processOne(topic, writer, options = {}) {
     try {
       const images = await generateImages(finalPost.title, topic.keyword, finalPost.body);
       thumbnailBuffer = images.thumbnail;
-      // 사용자 이미지가 있으면 AI 본문 이미지 대신 사용
+      // 사용자 이미지가 있으면: 첫 번째 사진 = 미리보기(썸네일), 전부 본문에도 사용
       if (userImageBuffers.length > 0) {
+        thumbnailBuffer = userImageBuffers[0]; // Ghost 미리보기/맨 위 = 사용자가 제일 먼저 보낸 사진
         bodyImageBuffers = userImageBuffers;
         pexelsImages = userImageBuffers.length >= 3 ? [] : (images.pexelsImages || []);
       } else {
@@ -136,8 +137,9 @@ async function processOne(topic, writer, options = {}) {
       }
     } catch (e) {
       console.warn(`[글] AI 이미지 생성 실패: ${e.message}`);
-      // 사용자 이미지라도 있으면 사용
+      // 사용자 이미지라도 있으면 사용 (첫 장 = 썸네일)
       if (userImageBuffers.length > 0) {
+        thumbnailBuffer = userImageBuffers[0];
         bodyImageBuffers = userImageBuffers;
       }
     }
