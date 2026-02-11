@@ -14,7 +14,7 @@ require('dotenv').config();
 const fs = require('fs');
 const { WRITERS } = require('./writers');
 
-const { selectTopics, selectDailyTopicsWithQuota } = require('./pipeline/topicSelector');
+const { selectTopics, selectDailyTopicsWithQuota, getTopicFromSource } = require('./pipeline/topicSelector');
 
 function serverLog(msg, data = {}) {
   const line = JSON.stringify({ ts: new Date().toISOString(), msg, ...data }) + '\n';
@@ -214,11 +214,15 @@ async function reselectTopics(plan, numbers) {
   for (const entry of plan) {
     for (let i = 0; i < entry.topics.length; i++) {
       if (numbers.includes(num)) {
-        usedKeywords.delete(entry.topics[i].keyword);
-        const [newTopic] = await selectTopics(entry.writer, { excludeKeywords: usedKeywords });
-        entry.topics[i] = newTopic;
-        usedKeywords.add(newTopic.keyword);
-        console.log(`[Scheduler] ${num}번 재선정: "${newTopic.keyword}"`);
+        const originalSource = entry.topics[i].source;
+        const newTopic = await getTopicFromSource(entry.writer, originalSource, usedKeywords);
+        if (newTopic) {
+          entry.topics[i] = newTopic;
+          usedKeywords.add(newTopic.keyword);
+          console.log(`[Scheduler] ${num}번 재선정: [${originalSource}] "${newTopic.keyword}"`);
+        } else {
+          console.warn(`[Scheduler] ${num}번 재선정 실패 (${originalSource}에 후보 없음), 기존 주제 유지`);
+        }
       }
       num++;
     }

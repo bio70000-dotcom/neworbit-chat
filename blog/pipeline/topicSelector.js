@@ -109,6 +109,7 @@ async function getTrendTopics(writer, excludeKeywords = new Set(), maxCount = 2)
     for (const keyword of candidates) {
       if (result.length >= maxCount) break;
       if (excludeKeywords.has(keyword)) continue;
+      if (keyword.trim().split(/\s+/).length < 2) continue; // 단일 단어 주제는 스킵
       const dup = await isDuplicate(keyword);
       if (!dup) result.push({ keyword, category: 'trending', source: 'google_trends' });
     }
@@ -350,4 +351,4 @@ async function selectTopics(writer, options = {}) {
   return [topic];
 }
 
-module.exports = { selectTopics, selectDailyTopicsWithQuota };
+module.exports = { selectTopics, selectDailyTopicsWithQuota, getTopicFromSource };

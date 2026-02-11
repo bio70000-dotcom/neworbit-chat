@@ -63,8 +63,10 @@ async function getTrendingKeywords() {
       }
     }
 
-    console.log(`[GoogleTrends] RSS에서 ${keywords.length}개 키워드 수집`);
-    return keywords.slice(0, 30);
+    // 단일 단어(인명 등) 제외: 공백 기준 2단어 이상인 제목만 사용
+    const multiWord = keywords.filter((t) => t.trim().split(/\s+/).length >= 2);
+    console.log(`[GoogleTrends] RSS에서 ${keywords.length}개 수집, 2단어 이상 ${multiWord.length}개`);
+    return multiWord.slice(0, 30);
   } catch (e) {
     console.warn(`[GoogleTrends] RSS 수집 실패: ${e.message}`);
     return [];
