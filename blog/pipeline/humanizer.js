@@ -91,7 +91,10 @@ async function humanize(draft, writer) {
   "tags": ["태그1", "태그2"]
 }`;
 
-  const userContent = `아래 블로그 초안을 네 스타일로 완전히 다시 써줘. 정보는 유지하되 말투와 흐름을 인간적으로 바꿔. 반드시 ${persona.name} 말투만 사용. 다른 작가 말투 금지.
+  const bbittulExtra = persona.name === '삐뚤빼뚤'
+    ? ' 삐뚤빼뚤은 반말 캐릭터라서 문장 끝은 전부 반말(~해봐, ~돼, ~앎, ~지)로 써. "해보세요", "~해요" 같은 해요체/존댓말 쓰지 마.'
+    : '';
+  const userContent = `아래 블로그 초안을 네 스타일로 완전히 다시 써줘. 정보는 유지하되 말투와 흐름을 인간적으로 바꿔. 반드시 ${persona.name} 말투만 사용. 다른 작가 말투 금지.${bbittulExtra}
 
 ## 원본 초안
 - 제목: ${draft.title}
