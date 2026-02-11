@@ -85,14 +85,25 @@ async function getUpdates(timeout = 30) {
  * @returns {Promise<boolean>} 트리거 명령이 있으면 true
  */
 async function checkForStartCommand() {
+  const cmd = await checkForSchedulerCommand();
+  return cmd === 'start';
+}
+
+/**
+ * 스케줄러 제어 명령 확인 (폴링용)
+ * @returns {Promise<'start'|'status'|'pause'|'resume'|null>}
+ */
+async function checkForSchedulerCommand() {
   const updates = await getUpdates(0);
-  const triggers = ['시작', '주제 선정', '주제선정', '시작해', '오늘 주제'];
   for (const u of updates) {
     const text = (u.message?.text || '').trim();
     const lower = text.toLowerCase();
-    if (triggers.some((cmd) => lower === cmd || lower.includes(cmd))) return true;
+    if (['멈춤', '일시정지', '스케줄러 멈춤', '정지'].some((c) => lower === c || lower.includes(c))) return 'pause';
+    if (['재개', '스케줄러 재개', '다시 시작'].some((c) => lower === c || lower.includes(c))) return 'resume';
+    if (['시작', '주제 선정', '주제선정', '시작해', '오늘 주제'].some((c) => lower === c || lower.includes(c))) return 'start';
+    if (['상태', 'status', '스케줄러 상태', '스케줄러'].some((c) => lower === c || lower.includes(c))) return 'status';
   }
-  return false;
+  return null;
 }
 
 /**
@@ -369,6 +380,7 @@ module.exports = {
   waitForResponse,
   waitForPhotosComplete,
   checkForStartCommand,
+  checkForSchedulerCommand,
   downloadPhoto,
   formatDailyReport,
   formatSubheadingsReport,

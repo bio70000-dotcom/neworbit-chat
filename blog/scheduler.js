@@ -30,6 +30,7 @@ const {
   waitForResponse,
   waitForPhotosComplete,
   checkForStartCommand,
+  checkForSchedulerCommand,
   downloadPhoto,
   formatDailyReport,
   formatSubheadingsReport,
@@ -59,6 +60,11 @@ const MIN_GAP_MINUTES = 60;           // 포스트 간 최소 간격 (분)
 const SAME_WRITER_GAP_MINUTES = 180;  // 같은 작가 글 간 최소 간격 (분)
 const APPROVAL_TIMEOUT_MS = 4 * 60 * 60 * 1000; // 승인 대기 최대 4시간
 const PHOTOS_COMPLETE_TIMEOUT_MS = 2 * 60 * 60 * 1000; // 소제목 보고 후 사진 취합 대기 최대 2시간
+
+// 스케줄러 상태 (텔레그램 "상태" 명령용)
+let schedulerState = 'idle'; // 'idle' | 'approval' | 'photos' | 'publishing'
+let currentSchedule = null;   // 발행 중일 때 [{ time, writer, topic, index }]
+let schedulerPaused = false; // true면 09:00/시작 시 dailyCycle 실행 안 함
 
 // ── KST 시간 유틸 (UTC+9, 서버 타임존 무관) ─────────────────────────
 const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
@@ -329,6 +335,44 @@ async function executeSchedule(schedule, userPhotos) {
   return results;
 }
 
+/**
+ * 스케줄러 상태 메시지 (텔레그램 "상태" 명령 응답)
+ * @param {number} [nextRunMs] 대기 중일 때 다음 실행까지 ms (idle일 때만 사용)
+ */
+function formatSchedulerStatus(nextRunMs) {
+  const stateLabels = {
+    idle: '대기 중',
+    approval: '1차 승인 대기 중',
+    photos: '사진 취합 대기 중',
+    publishing: '발행 진행 중',
+  };
+  const label = stateLabels[schedulerState] || schedulerState;
+
+  let msg = `<b>📋 스케줄러 상태</b>\n━━━━━━━━━━━━━━━━━━\n`;
+  if (schedulerPaused) {
+    msg += `⏸ 일시정지됨. <b>재개</b> 또는 <b>시작</b> 입력 시 다시 실행됩니다.\n`;
+  }
+  msg += `상태: ${label}\n`;
+
+  if (schedulerState === 'idle' && nextRunMs != null) {
+    const nextDate = new Date(Date.now() + nextRunMs);
+    const kst = new Date(nextDate.getTime() + KST_OFFSET_MS);
+    const dateStr = `${kst.getUTCFullYear()}-${String(kst.getUTCMonth() + 1).padStart(2, '0')}-${String(kst.getUTCDate()).padStart(2, '0')} ${String(kst.getUTCHours()).padStart(2, '0')}:${String(kst.getUTCMinutes()).padStart(2, '0')} KST`;
+    msg += `다음 실행: ${dateStr}\n`;
+  }
+  if (schedulerState === 'publishing' && currentSchedule && currentSchedule.length > 0) {
+    msg += `\n오늘 발행 예정:\n`;
+    for (let i = 0; i < currentSchedule.length; i++) {
+      const it = currentSchedule[i];
+      const h = Math.floor(it.time / 60);
+      const m = String(it.time % 60).padStart(2, '0');
+      msg += `${i + 1}. ${h}:${m} - [${it.writer.nickname}] ${it.topic.keyword}\n`;
+    }
+  }
+  msg += `━━━━━━━━━━━━━━━━━━`;
+  return msg;
+}
+
 // ── 일일 사이클 ────────────────────────────
 /**
  * @param {Object} [opts] - { test5Min: boolean } 테스트 시 5분 간격 6편
@@ -342,6 +386,8 @@ async function dailyCycle(opts = {}) {
   serverLog('dailyCycle.start', { test5Min, dateStr });
 
   try {
+    schedulerState = 'approval';
+    currentSchedule = null;
     // 이전 메시지 비우기
     await flushUpdates();
 
@@ -370,6 +416,8 @@ async function dailyCycle(opts = {}) {
         case 'cancel':
           console.log('[Scheduler] 사용자 취소 - 오늘 발행 안 함');
           await sendMessage('🛑 오늘 발행을 취소했습니다.');
+          schedulerState = 'idle';
+          currentSchedule = null;
           return;
 
         case 'reject_some':
@@ -393,6 +441,8 @@ async function dailyCycle(opts = {}) {
         case 'timeout':
           console.log('[Scheduler] 승인 타임아웃 - 오늘 발행 취소');
           await sendMessage('⏰ 4시간 내 승인이 없어 오늘 발행을 취소합니다.');
+          schedulerState = 'idle';
+          currentSchedule = null;
           return;
 
         default:
@@ -413,6 +463,8 @@ async function dailyCycle(opts = {}) {
           console.error(`[Scheduler] 초안 생성 실패 (${topic.keyword}): ${e.message}`);
           await sendMessage(`❌ ${idx}번 초안 생성 실패: ${topic.keyword} - ${e.message}`);
           await cleanupAgent();
+          schedulerState = 'idle';
+          currentSchedule = null;
           return;
         }
       }
@@ -432,6 +484,7 @@ async function dailyCycle(opts = {}) {
     }
     await sendMessage(formatSubheadingsReport(subheadingsItems));
     console.log('[Scheduler] 주제·소제목 보고 완료, 사진 취합 대기...');
+    schedulerState = 'photos';
 
     // 5. 사진 취합 완료 대기
     const photoResult = await waitForPhotosComplete(PHOTOS_COMPLETE_TIMEOUT_MS);
@@ -447,6 +500,8 @@ async function dailyCycle(opts = {}) {
       ? generateTestPublishTimes(WRITERS.length * POSTS_PER_WRITER, 5)
       : generatePublishTimes(WRITERS.length * POSTS_PER_WRITER);
     const schedule = assignTimesToPosts(plan, times);
+    schedulerState = 'publishing';
+    currentSchedule = schedule;
 
     serverLog('schedule.built', {
       test5Min,
@@ -493,6 +548,9 @@ async function dailyCycle(opts = {}) {
     console.error(`[Scheduler] 일일 사이클 에러: ${e.message}`);
     console.error(e.stack);
     await sendMessage(`❌ 스케줄러 에러: ${e.message}`);
+  } finally {
+    schedulerState = 'idle';
+    currentSchedule = null;
   }
 }
 
@@ -543,17 +601,33 @@ async function main() {
       elapsed += POLL_CHUNK_MS;
 
       try {
-        if (await checkForStartCommand()) {
+        const cmd = await checkForSchedulerCommand();
+        if (cmd === 'pause') {
+          schedulerPaused = true;
+          await sendMessage('⏸ 스케줄러가 일시정지되었습니다. <b>재개</b> 또는 <b>시작</b> 입력 시 다시 실행됩니다.');
+          console.log('[Scheduler] 사용자 "멈춤" 명령 - 일시정지');
+        } else if (cmd === 'resume') {
+          schedulerPaused = false;
+          await sendMessage('▶ 스케줄러를 재개했습니다.');
+          console.log('[Scheduler] 사용자 "재개" 명령');
+        } else if (cmd === 'status') {
+          await sendMessage(formatSchedulerStatus(waitMs - elapsed));
+        } else if (cmd === 'start') {
           triggeredByCommand = true;
+          schedulerPaused = false;
           console.log('[Scheduler] 사용자 "시작" 명령 수신');
           await sendMessage('📌 주제 선정을 시작합니다.');
           break;
         }
       } catch (e) {
-        console.warn(`[Scheduler] 시작 명령 확인 중 오류: ${e.message}`);
+        console.warn(`[Scheduler] 명령 확인 중 오류: ${e.message}`);
       }
     }
 
+    if (schedulerPaused) {
+      console.log('[Scheduler] 일시정지 상태라 오늘 사이클을 건너뜁니다.');
+      continue;
+    }
     await dailyCycle();
   }
 }
