@@ -34,11 +34,11 @@ async function sendMessage(text) {
 
     const data = await res.json();
     if (!data.ok) {
-      console.warn(`[Telegram] 전송 실패: ${data.description}`);
+      console.warn(`[Telegram] sendMessage failed: ${data.description} (error_code: ${data.error_code || 'n/a'})`);
     }
     return data;
   } catch (e) {
-    console.warn(`[Telegram] 전송 에러: ${e.message}`);
+    console.warn(`[Telegram] sendMessage error: ${e.message}`);
     return null;
   }
 }
@@ -70,12 +70,19 @@ async function getUpdates(timeout = 30) {
 
     if (data.result.length > 0) {
       lastUpdateId = data.result[data.result.length - 1].update_id;
+      const fromOurChat = updates.length;
+      if (fromOurChat > 0) {
+        console.log(`[Telegram] getUpdates: ${fromOurChat} for our chat (lastUpdateId=${lastUpdateId})`);
+      }
+      if (fromOurChat < data.result.length) {
+        console.log(`[Telegram] getUpdates: ${data.result.length - fromOurChat} updates from other chats (ignored)`);
+      }
     }
 
     return updates;
   } catch (e) {
     if (e.name === 'AbortError') return [];
-    console.warn(`[Telegram] getUpdates 에러: ${e.message}`);
+    console.warn(`[Telegram] getUpdates error: ${e.message}`);
     return [];
   }
 }
@@ -97,11 +104,25 @@ async function checkForSchedulerCommand() {
   const updates = await getUpdates(0);
   for (const u of updates) {
     const text = (u.message?.text || '').trim();
+    if (!text) continue;
     const lower = text.toLowerCase();
-    if (['멈춤', '일시정지', '스케줄러 멈춤', '정지'].some((c) => lower === c || lower.includes(c))) return 'pause';
-    if (['재개', '스케줄러 재개', '다시 시작'].some((c) => lower === c || lower.includes(c))) return 'resume';
-    if (['시작', '주제 선정', '주제선정', '시작해', '오늘 주제'].some((c) => lower === c || lower.includes(c))) return 'start';
-    if (['상태', 'status', '스케줄러 상태', '스케줄러'].some((c) => lower === c || lower.includes(c))) return 'status';
+    if (['멈춤', '일시정지', '스케줄러 멈춤', '정지'].some((c) => lower === c || lower.includes(c))) {
+      console.log(`[Telegram] command: pause (text: "${text}")`);
+      return 'pause';
+    }
+    if (['재개', '스케줄러 재개', '다시 시작'].some((c) => lower === c || lower.includes(c))) {
+      console.log(`[Telegram] command: resume (text: "${text}")`);
+      return 'resume';
+    }
+    if (['시작', '주제 선정', '주제선정', '시작해', '오늘 주제'].some((c) => lower === c || lower.includes(c))) {
+      console.log(`[Telegram] command: start (text: "${text}")`);
+      return 'start';
+    }
+    if (['상태', 'status', '스케줄러 상태', '스케줄러'].some((c) => lower === c || lower.includes(c))) {
+      console.log(`[Telegram] command: status (text: "${text}")`);
+      return 'status';
+    }
+    console.log(`[Telegram] no command matched (text: "${text}")`);
   }
   return null;
 }

@@ -202,7 +202,12 @@ function assignTimesToPosts(plan, times) {
     }
   }
 
-  return scheduled.sort((a, b) => a.time - b.time);
+  // 시간순 정렬 후, 표시/실행 순서와 맞추기 위해 index를 1~6으로 재부여
+  const sorted = scheduled.sort((a, b) => a.time - b.time);
+  sorted.forEach((item, i) => {
+    item.index = i + 1;
+  });
+  return sorted;
 }
 
 // ── 주제 선정 ──────────────────────────────
@@ -266,16 +271,19 @@ async function executeSchedule(schedule, userPhotos) {
       await sendMessage(`⏩ ${item.index}번 "${item.topic.keyword}" → 예정 시각이 지나 즉시 발행합니다.`);
     }
 
-    // 이 글에 배정된 사용자 이미지 수집 (표시 순서=시간순 1~6번으로 매칭, item.index 아님)
+    // 이 글에 배정된 사용자 이미지 수집 (시간순 1~6번 = item.index와 일치)
     const assignedPhotos = userPhotos.filter(
-      (p) => p.postNumber === displayOrder || (!p.postNumber && !p.used)
+      (p) => p.postNumber === item.index || (!p.postNumber && !p.used)
     );
     const userImageBuffers = [];
+    const seenFileIds = new Set(); // 같은 사진 중복 전송 시 한 번만 사용
     for (const photo of assignedPhotos) {
+      if (seenFileIds.has(photo.fileId)) continue;
       try {
         const buffer = await downloadPhoto(photo.fileId);
         if (buffer) {
           userImageBuffers.push(buffer);
+          seenFileIds.add(photo.fileId);
           photo.used = true;
         }
       } catch (e) {
@@ -586,7 +594,7 @@ async function main() {
   }
 
   // 무한 루프: 매일 09:00 KST 또는 텔레그램 "시작" 명령 시 실행
-  const POLL_CHUNK_MS = 60 * 1000; // 1분마다 명령 확인
+  const POLL_CHUNK_MS = 15 * 1000; // 15초마다 명령 확인 (상태/시작 등 빠른 응답)
 
   while (true) {
     const waitMs = msUntilKST(9, 0);
