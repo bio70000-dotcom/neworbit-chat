@@ -23,6 +23,16 @@ const { extractKeywordsFromHtml } = require('./utils/pexelsSearch');
 const fs = require('fs');
 const path = require('path');
 
+/**
+ * 당일 6편 초안만 생성 (스케줄러에서 1차 승인 후 소제목 보고용)
+ * @param {Object} topic - { keyword, category, source }
+ * @returns {Promise<{title, metaDescription, body, tags}>}
+ */
+async function generateDraftOnly(topic) {
+  const researchData = await research(topic.keyword);
+  return writeDraft(topic, researchData);
+}
+
 // 임시 디렉토리 정리
 function cleanupTmp() {
   const tmpDir = path.join(__dirname, 'tmp');
@@ -46,7 +56,7 @@ async function randomDelay() {
  * 단일 글 처리 파이프라인
  * @param {Object} topic - 선정된 글감
  * @param {Object} writer - 선택된 작가
- * @param {Object} options - 추가 옵션 { userImageBuffers?: Buffer[] }
+ * @param {Object} options - { userImageBuffers?, postIndex?, preGeneratedDraft? } preGeneratedDraft 있으면 리서치/초안 스킵
  */
 async function processOne(topic, writer, options = {}) {
   console.log(`\n${'='.repeat(60)}`);
@@ -55,13 +65,19 @@ async function processOne(topic, writer, options = {}) {
   console.log('='.repeat(60));
 
   try {
-    // Step 1: 리서치
-    console.log('[글] 1/5 리서치 중...');
-    const researchData = await research(topic.keyword);
+    let draft;
+    if (options.preGeneratedDraft) {
+      draft = options.preGeneratedDraft;
+      console.log('[글] 사전 생성 초안 사용 (리서치/초안 스킵)');
+    } else {
+      // Step 1: 리서치
+      console.log('[글] 1/5 리서치 중...');
+      const researchData = await research(topic.keyword);
 
-    // Step 2: 초안 생성
-    console.log('[글] 2/5 초안 생성 중 (Gemini Flash)...');
-    const draft = await writeDraft(topic, researchData);
+      // Step 2: 초안 생성
+      console.log('[글] 2/5 초안 생성 중 (Gemini Flash)...');
+      draft = await writeDraft(topic, researchData);
+    }
 
     // Step 3: 인간화 (작가 페르소나 적용)
     console.log(`[글] 3/5 인간화 중 (Claude Sonnet → ${writer.nickname})...`);
@@ -73,9 +89,9 @@ async function processOne(topic, writer, options = {}) {
       finalPost = draft;
     }
 
-    // 소제목(h2) 텔레그램 전송 — 사용자가 이미지 선택·캡션 시 참고
+    // 소제목(h2) 텔레그램 전송 — 사전 생성 초안이 아닐 때만 (이미 배치로 보고했으면 스킵)
     const postIndex = options.postIndex;
-    if (postIndex != null) {
+    if (postIndex != null && !options.preGeneratedDraft) {
       const h2List = extractKeywordsFromHtml(finalPost.body);
       if (h2List.length > 0) {
         const subheadingsMsg = `${postIndex}번 글 소제목 (이미지 참고): ${h2List.join(', ')}`;
@@ -278,4 +294,4 @@ if (require.main === module) {
   main();
 }
 
-module.exports = { processOne, initAgent, cleanupAgent };
+module.exports = { processOne, generateDraftOnly, initAgent, cleanupAgent };

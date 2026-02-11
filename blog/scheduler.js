@@ -2,11 +2,12 @@
  * Blog Scheduler - 24/7 상주 프로세스
  *
  * 매일 09:00 KST:
- *  1. 3명 작가 x 2편 = 6편 주제 선정
- *  2. 텔레그램으로 보고
- *  3. 승인/거부/재선정 대기
- *  4. 승인 후 10:00~22:00 사이 랜덤 시간에 발행
- *  5. 발행 결과 텔레그램 알림
+ *  1. 6편 주제 선정 → 텔레그램 보고
+ *  2. 1차 주제 승인/거부/재선정 대기
+ *  3. 승인 후 6편 초안 생성(Gemini) → 주제·소제목(h2) 텔레그램 보고
+ *  4. 소제목에 맞는 사진 전송 대기 (완료/타임아웃)
+ *  5. 발행 스케줄 보고 → 10:00~22:00 랜덤 시간에 발행
+ *  6. 23시 포스팅 결과 보고 (성공/실패)
  */
 
 require('dotenv').config();
@@ -22,17 +23,20 @@ function serverLog(msg, data = {}) {
     try { fs.appendFileSync(process.env.DEBUG_LOG_PATH, line); } catch (e) {}
   }
 }
-const { processOne, initAgent, cleanupAgent } = require('./agent');
+const { processOne, generateDraftOnly, initAgent, cleanupAgent } = require('./agent');
 const {
   sendMessage,
   flushUpdates,
   waitForResponse,
+  waitForPhotosComplete,
   checkForStartCommand,
   downloadPhoto,
   formatDailyReport,
+  formatSubheadingsReport,
   sendPostResult,
   sendDailySummary,
 } = require('./utils/telegram');
+const { extractKeywordsFromHtml } = require('./utils/pexelsSearch');
 
 // 예기치 않은 예외/거부 시 로그 및 텔레그램 알림 (발행이 멈춘 원인 추적용)
 process.on('uncaughtException', (err) => {
@@ -54,6 +58,7 @@ const PUBLISH_END_HOUR = 22;          // 발행 종료 시각 (KST)
 const MIN_GAP_MINUTES = 60;           // 포스트 간 최소 간격 (분)
 const SAME_WRITER_GAP_MINUTES = 180;  // 같은 작가 글 간 최소 간격 (분)
 const APPROVAL_TIMEOUT_MS = 4 * 60 * 60 * 1000; // 승인 대기 최대 4시간
+const PHOTOS_COMPLETE_TIMEOUT_MS = 2 * 60 * 60 * 1000; // 소제목 보고 후 사진 취합 대기 최대 2시간
 
 // ── KST 시간 유틸 (UTC+9, 서버 타임존 무관) ─────────────────────────
 const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
@@ -282,7 +287,11 @@ async function executeSchedule(schedule, userPhotos) {
 
     let result;
     try {
-      result = await processOne(item.topic, item.writer, { userImageBuffers, postIndex: item.index });
+      result = await processOne(item.topic, item.writer, {
+      userImageBuffers,
+      postIndex: item.index,
+      preGeneratedDraft: item.topic.draft,
+    });
       if (!result || typeof result.success === 'undefined') {
         result = { success: false, keyword: item.topic.keyword, error: 'processOne returned invalid result', writer: item.writer.nickname };
       }
@@ -345,22 +354,16 @@ async function dailyCycle(opts = {}) {
     await sendMessage(reportMsg);
     console.log('[Scheduler] 텔레그램 보고 완료, 승인 대기...');
 
-    // 3. 승인 루프
+    // 3. 1차 승인 루프 (주제만)
     let approved = false;
-    let allPhotos = [];
 
     while (!approved) {
       const response = await waitForResponse(APPROVAL_TIMEOUT_MS);
 
-      // 대기 중 수신된 사진 누적
-      if (response.photos) {
-        allPhotos.push(...response.photos);
-      }
-
       switch (response.type) {
         case 'approve':
           approved = true;
-          await sendMessage('✅ 승인 완료! 오늘의 발행 스케줄을 생성합니다.');
+          await sendMessage('✅ 1차 승인 완료! 초안 생성 후 주제·소제목을 보내드립니다.');
           console.log('[Scheduler] 승인됨');
           break;
 
@@ -372,16 +375,14 @@ async function dailyCycle(opts = {}) {
         case 'reject_some':
           console.log(`[Scheduler] ${response.numbers.join(',')}번 재선정 요청`);
           plan = await reselectTopics(plan, response.numbers);
-          const updatedMsg = formatDailyReport(plan, dateStr, response.numbers);
-          await sendMessage(updatedMsg);
+          await sendMessage(formatDailyReport(plan, dateStr, response.numbers));
           console.log('[Scheduler] 수정 플랜 보고 완료, 재승인 대기...');
           break;
 
         case 'reject_all':
           console.log('[Scheduler] 전체 재선정 요청');
           plan = await selectDailyTopics();
-          const newMsg = formatDailyReport(plan, dateStr);
-          await sendMessage(newMsg);
+          await sendMessage(formatDailyReport(plan, dateStr));
           console.log('[Scheduler] 새 플랜 보고 완료, 재승인 대기...');
           break;
 
@@ -399,7 +400,49 @@ async function dailyCycle(opts = {}) {
       }
     }
 
-    // 4. 발행 스케줄 생성 (테스트 모드: 5분 간격 6편)
+    // 4. 초안 생성 + 주제·소제목 보고
+    await initAgent();
+    let idx = 0;
+    for (const entry of plan) {
+      for (const topic of entry.topics) {
+        idx++;
+        console.log(`[Scheduler] ${idx}/6 초안 생성: "${topic.keyword}"`);
+        try {
+          topic.draft = await generateDraftOnly(topic);
+        } catch (e) {
+          console.error(`[Scheduler] 초안 생성 실패 (${topic.keyword}): ${e.message}`);
+          await sendMessage(`❌ ${idx}번 초안 생성 실패: ${topic.keyword} - ${e.message}`);
+          await cleanupAgent();
+          return;
+        }
+      }
+    }
+
+    const subheadingsItems = [];
+    idx = 0;
+    for (const entry of plan) {
+      for (const topic of entry.topics) {
+        idx++;
+        subheadingsItems.push({
+          index: idx,
+          keyword: topic.keyword,
+          subheadings: topic.draft && topic.draft.body ? extractKeywordsFromHtml(topic.draft.body) : [],
+        });
+      }
+    }
+    await sendMessage(formatSubheadingsReport(subheadingsItems));
+    console.log('[Scheduler] 주제·소제목 보고 완료, 사진 취합 대기...');
+
+    // 5. 사진 취합 완료 대기
+    const photoResult = await waitForPhotosComplete(PHOTOS_COMPLETE_TIMEOUT_MS);
+    const allPhotos = photoResult.photos;
+    if (!photoResult.done) {
+      await sendMessage('⏰ 사진 취합 시간이 지나 스케줄로 진행합니다.');
+    } else {
+      await sendMessage('✅ 사진 취합 완료! 발행 스케줄을 생성합니다.');
+    }
+
+    // 6. 발행 스케줄 생성 및 보고
     const times = test5Min
       ? generateTestPublishTimes(WRITERS.length * POSTS_PER_WRITER, 5)
       : generatePublishTimes(WRITERS.length * POSTS_PER_WRITER);
@@ -416,14 +459,13 @@ async function dailyCycle(opts = {}) {
     });
 
     let scheduleMsg = '📋 <b>오늘의 발행 스케줄</b>\n━━━━━━━━━━━━━━━━━━\n';
-    let lineNum = 0;
-    for (const item of schedule) {
-      lineNum += 1;
+    for (let i = 0; i < schedule.length; i++) {
+      const item = schedule[i];
       const h = Math.floor(item.time / 60);
       const m = String(item.time % 60).padStart(2, '0');
-      scheduleMsg += `${lineNum}. ${h}:${m} - [${item.writer.nickname}] ${item.topic.keyword}\n`;
+      scheduleMsg += `${i + 1}. ${h}:${m} - [${item.writer.nickname}] ${item.topic.keyword}\n`;
     }
-    scheduleMsg += `━━━━━━━━━━━━━━━━━━\n이미지를 보내시면 글에 적용됩니다 (캡션에 1~6 번호)${test5Min ? '\n(테스트: 5분 간격 발행)' : ''}`;
+    scheduleMsg += `━━━━━━━━━━━━━━━━━━\n${test5Min ? '(테스트: 5분 간격 발행)' : ''}`;
     await sendMessage(scheduleMsg);
 
     console.log('[Scheduler] 발행 스케줄:');
@@ -431,11 +473,18 @@ async function dailyCycle(opts = {}) {
       console.log(`  ${Math.floor(item.time / 60)}:${String(item.time % 60).padStart(2, '0')} - ${item.writer.nickname}: ${item.topic.keyword}`);
     }
 
-    // 5. 발행 실행
-    await initAgent();
+    // 7. 발행 실행
     const results = await executeSchedule(schedule, allPhotos);
 
-    // 6. 일일 요약
+    // 8. 포스팅 결과 보고 (23시 2시간 이내면 23시에 전송, 아니면 즉시)
+    const kstNow = getKSTDate();
+    const kstMin = kstNow.getUTCHours() * 60 + kstNow.getUTCMinutes();
+    const minUntil23 = (23 * 60 - kstMin + 24 * 60) % (24 * 60);
+    if (minUntil23 > 0 && minUntil23 <= 120) {
+      const waitMs = minUntil23 * 60 * 1000;
+      console.log(`[Scheduler] ${minUntil23}분 후 23시 결과 보고 예정...`);
+      await new Promise((r) => setTimeout(r, waitMs));
+    }
     await sendDailySummary(results);
     await cleanupAgent();
 

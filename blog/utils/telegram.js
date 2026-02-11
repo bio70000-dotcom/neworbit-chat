@@ -180,6 +180,42 @@ async function waitForResponse(timeoutMs = 4 * 60 * 60 * 1000) {
 }
 
 /**
+ * 사진 취합 완료 대기 (소제목 보고 후)
+ * 사용자 "완료"/"사진 완료" 입력 또는 타임아웃 시 수집된 사진 반환
+ * @param {number} timeoutMs 최대 대기 (기본 2시간)
+ * @returns {Promise<{photos: Array<{fileId, postNumber, caption}>, done: boolean}>} done true면 사용자가 완료 입력, false면 타임아웃
+ */
+async function waitForPhotosComplete(timeoutMs = 2 * 60 * 60 * 1000) {
+  const deadline = Date.now() + timeoutMs;
+  const photos = [];
+
+  while (Date.now() < deadline) {
+    const updates = await getUpdates(30);
+
+    for (const update of updates) {
+      const msg = update.message;
+
+      if (msg.photo && msg.photo.length > 0) {
+        const fileId = msg.photo[msg.photo.length - 1].file_id;
+        const caption = (msg.caption || '').trim();
+        const postNumber = parseInt(caption, 10) || null;
+        photos.push({ fileId, postNumber, caption });
+        console.log(`[Telegram] 사진 수신 (번호: ${postNumber || '미지정'})`);
+        await sendMessage(`사진 접수 완료${postNumber ? ` → ${postNumber}번 글에 배정` : ' → 자동 배정'}`);
+        continue;
+      }
+
+      const text = (msg.text || '').trim().toLowerCase();
+      if (text === '완료' || text === '사진 완료' || text === '완료해') {
+        return { photos, done: true };
+      }
+    }
+  }
+
+  return { photos, done: false };
+}
+
+/**
  * Telegram 서버에서 사진 파일 다운로드
  * @param {string} fileId Telegram file_id
  * @returns {Promise<Buffer|null>}
@@ -271,6 +307,21 @@ function formatDailyReport(plan, dateStr, changedNumbers = null) {
 }
 
 /**
+ * 주제 + 소제목(h2) 보고 메시지 (초안 작성 후 이미지 준비용)
+ * @param {Array<{index: number, keyword: string, subheadings: string[]}>} items
+ * @returns {string}
+ */
+function formatSubheadingsReport(items) {
+  let msg = `<b>📝 주제 및 소제목 (이미지 참고)</b>\n━━━━━━━━━━━━━━━━━━\n`;
+  for (const it of items) {
+    const h2Text = (it.subheadings && it.subheadings.length > 0) ? it.subheadings.join(', ') : '(소제목 없음)';
+    msg += `${it.index}. [${it.keyword}]\n   소제목: ${h2Text}\n`;
+  }
+  msg += `━━━━━━━━━━━━━━━━━━\n위 소제목에 맞는 이미지를 보내주세요. 캡션에 1~6 번호 입력.\n<b>완료</b> 또는 <b>사진 완료</b> 입력 시 스케줄로 진행합니다.`;
+  return msg;
+}
+
+/**
  * 발행 결과 알림
  */
 async function sendPostResult(result) {
@@ -316,9 +367,11 @@ module.exports = {
   getUpdates,
   flushUpdates,
   waitForResponse,
+  waitForPhotosComplete,
   checkForStartCommand,
   downloadPhoto,
   formatDailyReport,
+  formatSubheadingsReport,
   sendPostResult,
   sendDailySummary,
 };
