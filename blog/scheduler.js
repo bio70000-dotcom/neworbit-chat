@@ -469,6 +469,7 @@ async function dailyCycle(opts = {}) {
           topic.draft = await generateDraftOnly(topic);
         } catch (e) {
           console.error(`[Scheduler] 초안 생성 실패 (${topic.keyword}): ${e.message}`);
+          if (e.stack) console.error(`[Scheduler] stack: ${e.stack}`);
           await sendMessage(`❌ ${idx}번 초안 생성 실패: ${topic.keyword} - ${e.message}`);
           await cleanupAgent();
           schedulerState = 'idle';

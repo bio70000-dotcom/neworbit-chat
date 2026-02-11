@@ -29,8 +29,17 @@ const path = require('path');
  * @returns {Promise<{title, metaDescription, body, tags}>}
  */
 async function generateDraftOnly(topic) {
-  const researchData = await research(topic.keyword);
-  return writeDraft(topic, researchData);
+  let researchData;
+  try {
+    researchData = await research(topic.keyword);
+  } catch (e) {
+    throw new Error(`research: ${e.message}`);
+  }
+  try {
+    return await writeDraft(topic, researchData);
+  } catch (e) {
+    throw new Error(`writeDraft: ${e.message}`);
+  }
 }
 
 // 임시 디렉토리 정리

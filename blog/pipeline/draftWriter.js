@@ -44,7 +44,8 @@ async function callGeminiWithModel(prompt, maxTokens, temperature, model) {
   const url = `${GEMINI_BASE_URL}/models/${model}:generateContent?key=${apiKey}`;
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 60000);
+  const timeoutMs = 60000;
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const res = await fetch(url, {
@@ -70,6 +71,11 @@ async function callGeminiWithModel(prompt, maxTokens, temperature, model) {
     if (!text) throw new Error('Gemini 응답이 비어있습니다');
 
     return text.trim();
+  } catch (e) {
+    if (e.name === 'AbortError') {
+      throw new Error(`Gemini timeout (${timeoutMs / 1000}s) or aborted`);
+    }
+    throw e;
   } finally {
     clearTimeout(timeout);
   }
