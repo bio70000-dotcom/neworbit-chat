@@ -265,6 +265,47 @@ async function waitForPhotosComplete(timeoutMs = 2 * 60 * 60 * 1000) {
 }
 
 /**
+ * N번 글용 사진 수집 (순차 수집용, 최대 maxPhotos장)
+ * 사용자가 메시지를 보낼 때까지 대기(타임아웃 없음). 사진 최대 maxPhotos장 또는 "다음"/"스킵" 입력 시 다음 번호로
+ * @param {number} postIndex 1~6
+ * @param {string} keyword 주제 키워드
+ * @param {number} maxPhotos 최대 수집 장수 (기본 3)
+ * @returns {Promise<Array<{fileId: string}>>} 수집된 사진 배열 (0~maxPhotos장)
+ */
+async function waitForPhotosForSlot(postIndex, keyword, maxPhotos = 3) {
+  await sendMessage(
+    `<b>${postIndex}번</b> 글 사진을 보내주세요: ${keyword} (최대 ${maxPhotos}장)\n다음 번호로 가려면 <b>다음</b> 또는 <b>스킵</b> 입력`
+  );
+  const photos = [];
+
+  while (photos.length < maxPhotos) {
+    const updates = await getUpdates(30);
+
+    for (const update of updates) {
+      const msg = update.message;
+
+      if (msg.photo && msg.photo.length > 0) {
+        const fileId = msg.photo[msg.photo.length - 1].file_id;
+        photos.push({ fileId });
+        console.log(`[Telegram] ${postIndex}번 글 사진 수신 (${photos.length}/${maxPhotos})`);
+        await sendMessage(`✅ ${postIndex}번 ${photos.length}장 접수${photos.length >= maxPhotos ? ' (최대 도달)' : ''}`);
+        if (photos.length >= maxPhotos) return photos;
+        continue;
+      }
+
+      const text = (msg.text || '').trim().toLowerCase();
+      if (text === '다음' || text === '스킵' || text === 'skip') {
+        console.log(`[Telegram] ${postIndex}번 ${photos.length}장 수집 후 다음으로`);
+        await sendMessage(`⏭ ${postIndex}번 완료 (${photos.length}장). 다음 번호로.`);
+        return photos;
+      }
+    }
+  }
+
+  return photos;
+}
+
+/**
  * Telegram 서버에서 사진 파일 다운로드
  * @param {string} fileId Telegram file_id
  * @returns {Promise<Buffer|null>}
@@ -417,6 +458,7 @@ module.exports = {
   flushUpdates,
   waitForResponse,
   waitForPhotosComplete,
+  waitForPhotosForSlot,
   checkForStartCommand,
   checkForSchedulerCommand,
   downloadPhoto,

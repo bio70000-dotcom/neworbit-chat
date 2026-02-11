@@ -5,8 +5,8 @@
  *  1. 6편 주제 선정 → 텔레그램 보고
  *  2. 1차 주제 승인/거부/재선정 대기
  *  3. 승인 후 6편 초안 생성(Gemini) → 주제·소제목(h2) 텔레그램 보고
- *  4. 소제목에 맞는 사진 전송 대기 (완료/타임아웃)
- *  5. 발행 스케줄 보고 → 10:00~22:00 랜덤 시간에 발행
+ *  4. 1~6번 순차 사진 수집 (글당 최대 3장, 사용자 메시지 올 때까지 대기)
+ *  5. 발행 스케줄 보고 → 11:00~22:00 KST 랜덤 시간에 6편 발행
  *  6. 23시 포스팅 결과 보고 (성공/실패)
  */
 
@@ -29,6 +29,7 @@ const {
   flushUpdates,
   waitForResponse,
   waitForPhotosComplete,
+  waitForPhotosForSlot,
   checkForStartCommand,
   checkForSchedulerCommand,
   downloadPhoto,
@@ -54,12 +55,12 @@ process.on('unhandledRejection', (reason, promise) => {
 
 // ── 설정 ──────────────────────────────────
 const POSTS_PER_WRITER = 2;          // 작가당 글 수
-const PUBLISH_START_HOUR = 10;        // 발행 시작 시각 (KST)
+const PUBLISH_START_HOUR = 11;        // 발행 시작 시각 (KST) 11:00~22:00
 const PUBLISH_END_HOUR = 22;          // 발행 종료 시각 (KST)
 const MIN_GAP_MINUTES = 60;           // 포스트 간 최소 간격 (분)
 const SAME_WRITER_GAP_MINUTES = 180;  // 같은 작가 글 간 최소 간격 (분)
 const APPROVAL_TIMEOUT_MS = 4 * 60 * 60 * 1000; // 승인 대기 최대 4시간
-const PHOTOS_COMPLETE_TIMEOUT_MS = 2 * 60 * 60 * 1000; // 소제목 보고 후 사진 취합 대기 최대 2시간
+const PHOTOS_COMPLETE_TIMEOUT_MS = 2 * 60 * 60 * 1000; // (레거시) 소제목 보고 후 사진 취합 대기
 
 // 스케줄러 상태 (텔레그램 "상태" 명령용)
 let schedulerState = 'idle'; // 'idle' | 'approval' | 'photos' | 'publishing'
@@ -479,36 +480,34 @@ async function dailyCycle(opts = {}) {
       }
     }
 
-    const subheadingsItems = [];
-    idx = 0;
-    for (const entry of plan) {
-      for (const topic of entry.topics) {
-        idx++;
-        subheadingsItems.push({
-          index: idx,
-          keyword: topic.keyword,
-          subheadings: topic.draft && topic.draft.body ? extractKeywordsFromHtml(topic.draft.body) : [],
-        });
-      }
-    }
-    await sendMessage(formatSubheadingsReport(subheadingsItems));
-    console.log('[Scheduler] 주제·소제목 보고 완료, 사진 취합 대기...');
-    schedulerState = 'photos';
-
-    // 5. 사진 취합 완료 대기
-    const photoResult = await waitForPhotosComplete(PHOTOS_COMPLETE_TIMEOUT_MS);
-    const allPhotos = photoResult.photos;
-    if (!photoResult.done) {
-      await sendMessage('⏰ 사진 취합 시간이 지나 스케줄로 진행합니다.');
-    } else {
-      await sendMessage('✅ 사진 취합 완료! 발행 스케줄을 생성합니다.');
-    }
-
-    // 6. 발행 스케줄 생성 및 보고
+    // 스케줄을 먼저 정해서 소제목/사진 번호와 발행 순서를 통일 (1번 = 같은 글)
     const times = test5Min
       ? generateTestPublishTimes(WRITERS.length * POSTS_PER_WRITER, 5)
       : generatePublishTimes(WRITERS.length * POSTS_PER_WRITER);
     const schedule = assignTimesToPosts(plan, times);
+
+    const subheadingsItems = schedule.map((item) => ({
+      index: item.index,
+      keyword: item.topic.keyword,
+      subheadings: item.topic.draft && item.topic.draft.body ? extractKeywordsFromHtml(item.topic.draft.body) : [],
+    }));
+    await sendMessage(formatSubheadingsReport(subheadingsItems));
+    console.log('[Scheduler] 주제·소제목 보고 완료 (스케줄 순서와 동일), 1~6번 순차 사진 수집...');
+    schedulerState = 'photos';
+
+    // 5. 1~6번 순차로 사진 수집 (글당 최대 3장, 사용자 메시지 올 때까지 대기)
+    const allPhotos = [];
+    for (let n = 1; n <= 6; n++) {
+      const item = schedule.find((i) => i.index === n);
+      if (!item) continue;
+      const slotPhotos = await waitForPhotosForSlot(n, item.topic.keyword, 3);
+      for (const p of slotPhotos) {
+        allPhotos.push({ fileId: p.fileId, postNumber: n, caption: '' });
+      }
+    }
+    await sendMessage(allPhotos.length > 0 ? '✅ 사진 수집 완료! 발행 스케줄(11:00~22:00)을 생성합니다.' : '⏰ 수집된 사진 없음. 스케줄대로 발행합니다.');
+
+    // 6. 발행 스케줄 보고 (schedule은 이미 위에서 생성됨)
     schedulerState = 'publishing';
     currentSchedule = schedule;
 
