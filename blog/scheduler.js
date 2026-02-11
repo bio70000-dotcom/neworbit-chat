@@ -601,12 +601,11 @@ async function main() {
     const waitHours = (waitMs / 1000 / 60 / 60).toFixed(1);
     console.log(`[Scheduler] 다음 실행까지 ${waitHours}시간 대기 (09:00 KST 또는 텔레그램 "시작" 명령)`);
 
-    let elapsed = 0;
+    const loopStartTime = Date.now();
     let triggeredByCommand = false;
 
-    while (elapsed < waitMs) {
+    while (Date.now() - loopStartTime < waitMs) {
       await new Promise((r) => setTimeout(r, POLL_CHUNK_MS));
-      elapsed += POLL_CHUNK_MS;
 
       try {
         const cmd = await checkForSchedulerCommand();
@@ -619,7 +618,8 @@ async function main() {
           await sendMessage('▶ 스케줄러를 재개했습니다.');
           console.log('[Scheduler] 사용자 "재개" 명령');
         } else if (cmd === 'status') {
-          await sendMessage(formatSchedulerStatus(waitMs - elapsed));
+          const remainingMs = waitMs - (Date.now() - loopStartTime);
+          await sendMessage(formatSchedulerStatus(remainingMs > 0 ? remainingMs : 0));
         } else if (cmd === 'start') {
           triggeredByCommand = true;
           schedulerPaused = false;
