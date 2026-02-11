@@ -253,7 +253,7 @@ async function publish(post) {
       {
         title: post.title,
         html: bodyHtml,
-        status: 'published',
+        status: 'draft', // 비공개(초안). 안정화 후 'published'로 변경해 공개
         tags,
         meta_title: post.title,
         meta_description: post.metaDescription || '',
