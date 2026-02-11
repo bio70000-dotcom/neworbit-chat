@@ -10,10 +10,11 @@ const FALLBACK_MODEL = 'gemini-2.5-flash';
 
 // ── 랜덤 설정 풀 ──────────────────────────────────────
 
+// Ghost 편집기 기준 단어 수 (최소 1,500 words)
 const LENGTH_RANGES = [
-  { min: 900, max: 1200, label: '간결하게' },
-  { min: 1200, max: 1600, label: '적당한 길이로' },
-  { min: 1600, max: 2000, label: '깊이있게' },
+  { min: 1500, max: 1800, label: '적당한 길이로' },
+  { min: 1800, max: 2200, label: '깊이있게' },
+  { min: 2200, max: 2600, label: '아주 깊이있게' },
 ];
 
 const HEADING_COUNTS = [2, 3, 3, 4, 4, 5]; // 가중치 포함 (3~4개가 많이 나오게)
@@ -116,7 +117,7 @@ async function writeDraft(topic, researchData) {
       : pick(CTA_VARIANTS);
   const temp = randomTemp();
 
-  console.log(`[DraftWriter] 설정: ${lengthRange.min}~${lengthRange.max}자, h2 ${headingCount}개, temp ${temp}`);
+  console.log(`[DraftWriter] 설정: ${lengthRange.min}~${lengthRange.max} words, h2 ${headingCount}개, temp ${temp}`);
 
   const prompt = `너는 한국의 SEO 전문 블로그 작가야. 아래 정보를 바탕으로 블로그 글을 작성해.
 
@@ -146,7 +147,7 @@ ${researchData}
 1. JSON 형식으로만 응답해. 다른 텍스트 없이 순수 JSON만.
 2. 제목: 검색 키워드를 자연스럽게 포함. 30자 이내. 숫자나 리스트형 제목 선호.
 3. 메타설명: 150자 이내. 검색 결과에 노출되는 설명문.
-4. 본문: ${lengthRange.min}~${lengthRange.max}자 분량. ${lengthRange.label} 써줘. HTML 형식(h2, h3, p, ul, li 태그 사용).
+4. 본문: Ghost 편집기 기준 단어 수 ${lengthRange.min}~${lengthRange.max} words 분량. ${lengthRange.label} 써줘. HTML 형식(h2, h3, p, ul, li 태그 사용).
    - 도입: 독자의 공감을 이끄는 훅 (1~2문장)
    - 본문: ${headingCount}개 소제목(h2)으로 구분
    - 마무리: 자연스러운 마무리 + CTA
@@ -162,7 +163,7 @@ ${researchData}
 - **주변 소리 금지**: "이런저런 방법이 있는데요~" 같이 둘러대지 마. 구체적인 이름, 수치, 방법을 직접 말해
 - **리스트형이면 각 항목에 왜 좋은지, 주의점은 뭔지, 실제 경험/비교가 포함되어야 함**
 - 구체적인 예시, 수치, 비교를 최소 3개 이상 포함해
-- 본문 최소 ${lengthRange.min}자 이상 반드시 지켜
+- 본문 최소 ${lengthRange.min} words 이상 반드시 지켜 (Ghost 단어 수 기준)
 - 완전히 독창적인 시각으로 써. 절대 다른 글을 복사하지 마
 - 리서치 자료의 핵심 사실을 반영하되 그대로 베끼지 마
 
