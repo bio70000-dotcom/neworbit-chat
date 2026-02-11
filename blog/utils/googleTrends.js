@@ -65,8 +65,13 @@ async function getTrendingKeywords() {
 
     // 단일 단어(인명 등) 제외: 공백 기준 2단어 이상인 제목만 사용
     const multiWord = keywords.filter((t) => t.trim().split(/\s+/).length >= 2);
-    console.log(`[GoogleTrends] RSS에서 ${keywords.length}개 수집, 2단어 이상 ${multiWord.length}개`);
-    return multiWord.slice(0, 30);
+    // 한글 포함 우선, 없으면 영어도 사용 (한글 먼저 나열 후 영어로 채움)
+    const hasHangul = /[\uAC00-\uD7A3]/;
+    const korean = multiWord.filter((t) => hasHangul.test(t));
+    const englishOnly = multiWord.filter((t) => !hasHangul.test(t));
+    const result = [...korean, ...englishOnly].slice(0, 30);
+    console.log(`[GoogleTrends] RSS에서 ${keywords.length}개 수집, 2단어 이상 ${multiWord.length}개 (한글 ${korean.length}개 우선, 영어 ${englishOnly.length}개)`);
+    return result;
   } catch (e) {
     console.warn(`[GoogleTrends] RSS 수집 실패: ${e.message}`);
     return [];
