@@ -59,12 +59,22 @@ function sendJson(res, status, obj) {
   send(res, status, JSON.stringify(obj), 'application/json');
 }
 
+const DEFAULT_LOG_SOURCES = ['scheduler.log', 'daily-restart.log', 'blog-agent.log'];
+
 function listLogFiles() {
-  if (!fs.existsSync(LOG_DIR)) return [];
-  return fs.readdirSync(LOG_DIR)
-    .filter((f) => fs.statSync(path.join(LOG_DIR, f)).isFile())
-    .sort()
-    .reverse();
+  let files = [];
+  if (fs.existsSync(LOG_DIR)) {
+    files = fs.readdirSync(LOG_DIR)
+      .filter((f) => fs.statSync(path.join(LOG_DIR, f)).isFile())
+      .sort()
+      .reverse();
+  }
+  // 폴더가 비어있어도 기본 소스는 드롭다운에 표시 (배포 직후·크론 전에도 로그 선택 가능)
+  const known = new Set(files);
+  for (const name of DEFAULT_LOG_SOURCES) {
+    if (!known.has(name)) files.push(name);
+  }
+  return files.sort().reverse();
 }
 
 function readLastLines(filePath, lines = 500) {
