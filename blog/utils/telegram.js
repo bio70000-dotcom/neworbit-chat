@@ -192,10 +192,13 @@ async function waitForResponse(timeoutMs = 4 * 60 * 60 * 1000) {
         continue;
       }
 
-      const text = (msg.text || '').trim().toLowerCase();
+      const rawText = (msg.text || '').trim();
+      const text = rawText.toLowerCase();
+      console.warn('[Telegram] 승인 대기 메시지:', JSON.stringify(rawText.slice(0, 80)));
 
       // 전체 승인
       if (text === 'ok' || text === '승인' || text === 'ㅇㅋ') {
+        console.warn('[Telegram] 파싱 결과: type=approve');
         return { type: 'approve', photos };
       }
 
@@ -206,6 +209,7 @@ async function waitForResponse(timeoutMs = 4 * 60 * 60 * 1000) {
 
       // 전체 재선정
       if (text === '전체 다시' || text === '다시' || text === '재선정') {
+        console.warn('[Telegram] 파싱 결과: type=reject_all');
         return { type: 'reject_all', photos };
       }
 
@@ -218,12 +222,23 @@ async function waitForResponse(timeoutMs = 4 * 60 * 60 * 1000) {
           .filter((n) => n >= 1 && n <= 6);
 
         if (numbers.length > 0) {
+          console.warn('[Telegram] 파싱 결과: type=reject_some numbers=', numbers);
+          return { type: 'reject_some', numbers, photos };
+        }
+      }
+      // "2번 5번 다시" 등: 숫자만 추출 (번/다시 포함 메시지)
+      const anyNums = rawText.match(/\d+/g);
+      if (anyNums && (text.includes('다시') || text.includes('재선정'))) {
+        const numbers = [...new Set(anyNums.map((n) => parseInt(n, 10)).filter((n) => n >= 1 && n <= 6))].sort((a, b) => a - b);
+        if (numbers.length > 0) {
+          console.warn('[Telegram] 파싱 결과: type=reject_some (번/기타) numbers=', numbers);
           return { type: 'reject_some', numbers, photos };
         }
       }
 
       // 상태 조회
       if (text === '상태' || text === 'status') {
+        console.warn('[Telegram] 파싱 결과: type=status');
         return { type: 'status', photos };
       }
     }

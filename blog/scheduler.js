@@ -218,12 +218,26 @@ async function selectDailyTopics() {
   return selectDailyTopicsWithQuota(WRITERS, POSTS_PER_WRITER);
 }
 
+/** plan에 저장된 source(표시명/내부명 혼재)를 getTopicFromSource용 내부값으로 변환 */
+function normalizeSourceForReselect(source) {
+  if (!source || typeof source !== 'string') return 'naver_news';
+  const s = source.toLowerCase().replace(/_/g, '');
+  if (s === 'natetrend') return 'nate_trend';
+  if (s === 'seasonal') return 'seasonal';
+  if (s.includes('naver') || s.includes('dalsanchek') || s.includes('textree') || s.includes('bbittul')) return 'naver_news';
+  if (source.toLowerCase() === 'nate_trend') return 'nate_trend';
+  if (source.toLowerCase() === 'naver_news') return 'naver_news';
+  if (source.toLowerCase() === 'seasonal') return 'seasonal';
+  return 'naver_news';
+}
+
 /**
  * 특정 번호의 주제만 재선정
  * @param {Array} plan 현재 플랜
  * @param {number[]} numbers 재선정할 번호 (1~6)
  */
 async function reselectTopics(plan, numbers) {
+  console.warn('[Scheduler] 재선정 요청 numbers=', numbers);
   const usedKeywords = new Set();
   for (const entry of plan) {
     for (const t of entry.topics) usedKeywords.add(t.keyword);
@@ -233,13 +247,14 @@ async function reselectTopics(plan, numbers) {
     for (let i = 0; i < entry.topics.length; i++) {
       if (numbers.includes(num)) {
         const originalSource = entry.topics[i].source;
-        const newTopic = await getTopicFromSource(entry.writer, originalSource, usedKeywords);
+        const internalSource = normalizeSourceForReselect(originalSource);
+        const newTopic = await getTopicFromSource(entry.writer, internalSource, usedKeywords);
         if (newTopic) {
           entry.topics[i] = newTopic;
           usedKeywords.add(newTopic.keyword);
-          console.log(`[Scheduler] ${num}번 재선정: [${originalSource}] "${newTopic.keyword}"`);
+          console.warn(`[Scheduler] ${num}번 재선정 성공: [${originalSource}] → [${internalSource}] "${newTopic.keyword}"`);
         } else {
-          console.warn(`[Scheduler] ${num}번 재선정 실패 (${originalSource}에 후보 없음), 기존 주제 유지`);
+          console.warn(`[Scheduler] ${num}번 재선정 실패: originalSource=${JSON.stringify(originalSource)} internalSource=${internalSource} (후보 없음), 기존 주제 유지`);
         }
       }
       num++;
@@ -431,10 +446,10 @@ async function dailyCycle(opts = {}) {
           return;
 
         case 'reject_some':
-          console.log(`[Scheduler] ${response.numbers.join(',')}번 재선정 요청`);
+          console.warn(`[Scheduler] reject_some 수신 numbers=${response.numbers.join(',')}, 재선정 실행`);
           plan = await reselectTopics(plan, response.numbers);
           await sendMessage(formatDailyReport(plan, dateStr, response.numbers));
-          console.log('[Scheduler] 수정 플랜 보고 완료, 재승인 대기...');
+          console.warn('[Scheduler] 수정 플랜 보고 완료, 재승인 대기...');
           break;
 
         case 'reject_all':
