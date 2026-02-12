@@ -1,10 +1,7 @@
 /**
  * 시그널(signal.bz) 실시간 검색어 수집만 테스트 (로그/에러 확인용)
- * 사용법: blog 폴더에서
- *   node scripts/test-signal-topics.js
- * 또는 프로젝트 루트에서
- *   node blog/scripts/test-signal-topics.js
- * cheerio 필요: npm install cheerio (blog/package.json)
+ * 서버 콘솔(이미 떠 있는 컨테이너에 명령 보내기):
+ *   docker-compose exec blog-scheduler node scripts/test-signal-topics.js
  */
 require('dotenv').config({ path: require('path').join(__dirname, '../../.env') });
 require('dotenv').config({ path: require('path').join(__dirname, '../.env') });

@@ -1,15 +1,12 @@
 /**
  * 글감 선정 모듈
- * 작가별 전문 분야(writers.js categories·bio)에 맞는 주제를 선정
- *
- * 일일 6편 시 소스 할당: 시즌 2, 네이버 뉴스 2, 구글 트렌드 2 (균형 유지)
+ * 국내 소스 3종(네이트 실시간, 네이버 뉴스 작가별, 시즌)으로 Topic Pool ~25개 구성.
+ * 구글 트렌드/유튜브/시그널 배제.
  */
 
 const calendar = require('../calendar.json');
-const { getGoogleTrendsDailyKR } = require('../utils/googleTrendsRss');
-const { getYoutubePopularTopics } = require('../utils/youtubeTrends');
+const { getNateTrendTopics } = require('../utils/nateTrends');
 const { getNaverNewsTopics, getNaverTopicsByWriterQueries } = require('../utils/naverTopics');
-const { getSignalTopics } = require('../utils/signalBz');
 const { isDuplicate } = require('../utils/dedup');
 const { getNaverBlogSearchTotal, getSearchVolumeLabel } = require('../utils/searchVolume');
 
@@ -109,17 +106,16 @@ function getSeasonalTopicsForPool(maxCount = 5) {
 /**
  * YouTube 인기 뉴스/이슈에서 1개
  */
-async function getYoutubeTopic(writer, excludeKeywords = new Set()) {
-  const topics = await getYoutubeTopics(excludeKeywords, 1);
+/** 네이트 실시간 이슈에서 1개 (fallback/단일 선정용) */
+async function getNateTopic(writer, excludeKeywords = new Set()) {
+  const topics = await getNateTopics(excludeKeywords, 1);
   return topics[0] || null;
 }
 
-/**
- * YouTube 인기 뉴스/이슈에서 최대 maxCount개
- */
-async function getYoutubeTopics(excludeKeywords = new Set(), maxCount = 5) {
+/** 네이트 실시간 이슈에서 최대 maxCount개 (금지어 제외됨) */
+async function getNateTopics(excludeKeywords = new Set(), maxCount = 5) {
   try {
-    const list = await getYoutubePopularTopics(maxCount * 2);
+    const list = await getNateTrendTopics(maxCount * 2);
     const result = [];
     for (const t of list) {
       if (result.length >= maxCount) break;
@@ -129,7 +125,7 @@ async function getYoutubeTopics(excludeKeywords = new Set(), maxCount = 5) {
     }
     return result;
   } catch (e) {
-    console.warn(`[TopicSelector] 유튜브 주제 수집 실패: ${e.message}`);
+    console.warn(`[TopicSelector] 네이트 주제 수집 실패: ${e.message}`);
     return [];
   }
 }
@@ -170,21 +166,9 @@ async function trySourcesInOrder(sources, writer, excludeKeywords = new Set()) {
   for (const source of sources) {
     let topic = null;
     switch (source) {
-      case 'youtube_popular':
-        topic = await getYoutubeTopic(writer, excludeKeywords);
+      case 'nate_trend':
+        topic = await getNateTopic(writer, excludeKeywords);
         break;
-      case 'signal_bz': {
-        const list = await getSignalTopics(5);
-        for (const t of list) {
-          if (excludeKeywords.has(t.keyword)) continue;
-          const dup = await isDuplicate(t.keyword);
-          if (!dup) {
-            topic = t;
-            break;
-          }
-        }
-        break;
-      }
       case 'naver_news':
         topic = await getNaverTopic(writer, excludeKeywords);
         break;
@@ -207,7 +191,7 @@ async function trySourcesInOrder(sources, writer, excludeKeywords = new Set()) {
 
   // 최종 fallback: 시즌 → 네이버 → 트렌드 순환
   console.warn('[TopicSelector] 모든 소스 실패, fallback 재시도');
-  const fallbackOrder = ['seasonal', 'naver_news', 'youtube_popular', 'signal_bz'];
+  const fallbackOrder = ['seasonal', 'naver_news', 'nate_trend'];
   for (const fb of fallbackOrder) {
     let topic = null;
     if (fb === 'seasonal') {
@@ -215,18 +199,8 @@ async function trySourcesInOrder(sources, writer, excludeKeywords = new Set()) {
       if (seasonal.length > 0) topic = seasonal[0];
     } else if (fb === 'naver_news') {
       topic = await getNaverTopic(writer, excludeKeywords);
-    } else if (fb === 'youtube_popular') {
-      topic = await getYoutubeTopic(writer, excludeKeywords);
-    } else if (fb === 'signal_bz') {
-      const list = await getSignalTopics(5);
-      for (const t of list) {
-        if (excludeKeywords.has(t.keyword)) continue;
-        const dup = await isDuplicate(t.keyword);
-        if (!dup) {
-          topic = t;
-          break;
-        }
-      }
+    } else if (fb === 'nate_trend') {
+      topic = await getNateTopic(writer, excludeKeywords);
     }
     if (topic) {
       console.log(`[TopicSelector] 선정 (fallback): [${topic.source}] "${topic.keyword}"`);
@@ -258,28 +232,16 @@ async function getTopicFromSource(writer, source, excludeKeywords = new Set()) {
     case 'naver_news':
       topic = await getNaverTopic(writer, excludeKeywords);
       break;
-    case 'youtube_popular':
-      topic = await getYoutubeTopic(writer, excludeKeywords);
+    case 'nate_trend':
+      topic = await getNateTopic(writer, excludeKeywords);
       break;
-    case 'signal_bz': {
-      const list = await getSignalTopics(5);
-      for (const t of list) {
-        if (excludeKeywords.has(t.keyword)) continue;
-        const dup = await isDuplicate(t.keyword);
-        if (!dup) {
-          topic = t;
-          break;
-        }
-      }
-      break;
-    }
     default:
       break;
   }
   return topic;
 }
 
-/** AI 선정용 후보 풀: 7소스 병렬 수집 → 총 ~25개. 각 아이템에 sourceTag 부여 (AI 전달용) */
+/** AI 선정용 후보 풀: 네이트 10 + 네이버(달산책 5, 텍스트리 5, 삐뚤빼뚤 3) + 시즌 2 ≈ 25개. sourceTag 명확 부여 */
 async function getCandidatesPool(writers, postsPerWriter = 2) {
   const pool = [];
   const usedGlobal = new Set();
@@ -303,28 +265,16 @@ async function getCandidatesPool(writers, postsPerWriter = 2) {
   const wT = writers.find((w) => w.id === 'textree');
   const wB = writers.find((w) => w.id === 'bbittul');
 
-  const [
-    signalList,
-    googleList,
-    youtubeList,
-    seasonalList,
-    naverDalsanchek,
-    naverTextree,
-    naverBbittul,
-  ] = await Promise.all([
-    getSignalTopics(5).catch((e) => { console.warn('[TopicSelector] 시그널 수집 실패:', e.message); return []; }),
-    getGoogleTrendsDailyKR(5).catch((e) => { console.warn('[TopicSelector] 구글 트렌드 수집 실패:', e.message); return []; }),
-    getYoutubePopularTopics(3).catch((e) => { console.warn('[TopicSelector] 유튜브 수집 실패:', e.message); return []; }),
+  const [nateList, seasonalList, naverDalsanchek, naverTextree, naverBbittul] = await Promise.all([
+    getNateTrendTopics(10).catch((e) => { console.warn('[TopicSelector] 네이트 수집 실패:', e.message); return []; }),
     Promise.resolve(getSeasonalTopicsForPool(2)),
-    wD ? getNaverTopicsByWriterQueries(wD, 4).catch((e) => { console.warn('[TopicSelector] 네이버(달산책) 실패:', e.message); return []; }) : Promise.resolve([]),
-    wT ? getNaverTopicsByWriterQueries(wT, 4).catch((e) => { console.warn('[TopicSelector] 네이버(텍스트리) 실패:', e.message); return []; }) : Promise.resolve([]),
-    wB ? getNaverTopicsByWriterQueries(wB, 2).catch((e) => { console.warn('[TopicSelector] 네이버(삐뚤빼뚤) 실패:', e.message); return []; }) : Promise.resolve([]),
+    wD ? getNaverTopicsByWriterQueries(wD, 5).catch((e) => { console.warn('[TopicSelector] 네이버(달산책) 실패:', e.message); return []; }) : Promise.resolve([]),
+    wT ? getNaverTopicsByWriterQueries(wT, 5).catch((e) => { console.warn('[TopicSelector] 네이버(텍스트리) 실패:', e.message); return []; }) : Promise.resolve([]),
+    wB ? getNaverTopicsByWriterQueries(wB, 3).catch((e) => { console.warn('[TopicSelector] 네이버(삐뚤빼뚤) 실패:', e.message); return []; }) : Promise.resolve([]),
   ]);
 
   const batches = [
-    [signalList, 'signal_bz', 'Signal'],
-    [googleList, 'google_trends_rss', 'Google_Trends'],
-    [youtubeList, 'youtube_popular', 'Youtube'],
+    [nateList, 'nate_trend', 'Nate_Trend'],
     [naverDalsanchek, 'naver_news', 'Naver_Dalsanchek'],
     [naverTextree, 'naver_news', 'Naver_Textree'],
     [naverBbittul, 'naver_news', 'Naver_Bbittul'],
@@ -334,23 +284,7 @@ async function getCandidatesPool(writers, postsPerWriter = 2) {
     for (const t of list || []) await addToPool(t, sourceLabel, sourceTag);
   }
 
-  // 구글 트렌드·시그널 둘 다 0건이면 풀 부족 → 트렌드 폴백으로 20개 이상 유지 (AI 선정 실패 방지)
-  const TREND_FALLBACK_KEYWORDS = [
-    '실시간 검색어 트렌드', '오늘 인기 이슈', '핫이슈 정리', '실시간 키워드', '오늘의 트렌드',
-    '인기 검색어', '실시간 이슈', '트렌드 토픽',
-  ];
-  const needFallback = pool.length < 18 && signalList.length === 0 && googleList.length === 0;
-  if (needFallback) {
-    const fallbackTag = 'Signal';
-    const fallbackSource = 'signal_bz';
-    for (const kw of TREND_FALLBACK_KEYWORDS) {
-      if (pool.length >= 22) break;
-      await addToPool({ keyword: kw, category: 'trending', source: fallbackSource }, fallbackSource, fallbackTag);
-    }
-    console.warn('[TopicSelector] 구글/시그널 0건 → 트렌드 폴백 적용, 풀:', pool.length, '개');
-  }
-
-  console.log(`[TopicSelector] 후보 풀: ${pool.length}개 (7소스 병렬, Signal 포함 ~25개 목표)`);
+  console.log(`[TopicSelector] 후보 풀: ${pool.length}개 (네이트+네이버 작가별+시즌, ~25개 목표)`);
   return pool;
 }
 
@@ -397,7 +331,7 @@ async function selectDailyTopicsWithQuota(writers, postsPerWriter = 2) {
 /** AI 미사용 시 fallback: 기존 랜덤 할당 (시즌2/네이버2/트렌드2) */
 async function selectDailyTopicsWithQuotaFallback(writers, postsPerWriter = 2) {
   const total = writers.length * postsPerWriter;
-  const sourceQuota = ['seasonal', 'seasonal', 'naver_news', 'naver_news', 'youtube_popular', 'signal_bz'];
+  const sourceQuota = ['seasonal', 'seasonal', 'naver_news', 'naver_news', 'nate_trend', 'nate_trend'];
   for (let i = sourceQuota.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [sourceQuota[i], sourceQuota[j]] = [sourceQuota[j], sourceQuota[i]];
@@ -411,7 +345,7 @@ async function selectDailyTopicsWithQuotaFallback(writers, postsPerWriter = 2) {
     const source = sourceQuota[slot];
     let topic = await getTopicFromSource(writer, source, usedKeywords);
     if (!topic) {
-      const other = ['seasonal', 'naver_news', 'youtube_popular', 'signal_bz'].filter((s) => s !== source);
+      const other = ['seasonal', 'naver_news', 'nate_trend'].filter((s) => s !== source);
       topic = await trySourcesInOrder(other, writer, usedKeywords);
     }
     if (!topic) {
@@ -431,7 +365,7 @@ async function selectDailyTopicsWithQuotaFallback(writers, postsPerWriter = 2) {
  */
 async function selectTopics(writer, options = {}) {
   const excludeKeywords = options.excludeKeywords || new Set();
-  const fallbackSources = ['seasonal', 'naver_news', 'youtube_popular', 'signal_bz'];
+  const fallbackSources = ['seasonal', 'naver_news', 'nate_trend'];
   const topic = await trySourcesInOrder(fallbackSources, writer, excludeKeywords);
   return [topic];
 }

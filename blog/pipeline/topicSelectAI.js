@@ -80,7 +80,7 @@ async function selectTopicsWithAI(candidatesPool, writers) {
     )
     .join('\n');
 
-  const SOURCE_TAGS = ['Signal', 'Google_Trends', 'Youtube', 'Naver_Dalsanchek', 'Naver_Textree', 'Naver_Bbittul', 'Seasonal'];
+  const SOURCE_TAGS = ['Nate_Trend', 'Naver_Dalsanchek', 'Naver_Textree', 'Naver_Bbittul', 'Seasonal'];
   const byTag = {};
   SOURCE_TAGS.forEach((tag) => { byTag[tag] = []; });
   for (const c of candidatesPool) {
@@ -107,7 +107,7 @@ async function selectTopicsWithAI(candidatesPool, writers) {
 
   const candidatesText = SOURCE_TAGS.map((tag) => {
     const list = byTag[tag] || [];
-    const label = tag === 'Signal' ? 'Signal (실시간 급상승)' : tag === 'Youtube' ? 'Youtube (뉴스/정치)' : tag;
+    const label = tag === 'Nate_Trend' ? 'Nate_Trend (실시간 이슈)' : tag;
     return `## ${label}\n${list.map(formatCandidate).join('\n') || '(없음)'}`;
   }).join('\n\n');
 
@@ -121,14 +121,14 @@ ${candidatesText}
 
 ## 규칙
 1. **작가의 페르소나(categories, bio)와 가장 적합한 주제를 우선 매칭**한다.
-2. **dalsanchek(달산책)**: 라이프스타일·감성·힐링·여행·에세이 전문. **자극적인 이슈(Signal, Youtube)는 절대 배정하지 말 것.** [Naver_Dalsanchek], [Seasonal] 위주로 배정.
-3. **textree(텍스트리)**: IT·테크·경제·생산성·AI 전문. [Naver_Textree], [Google_Trends], [Signal] 등 적합.
-4. **bbittul(삐뚤빼뚤)**: 트렌드·엔터·맛집·이슈·밈 전문. [Signal], [Youtube], [Google_Trends], [Naver_Bbittul] 적합.
+2. **dalsanchek(달산책)**: 라이프스타일·감성·힐링·여행·에세이 전문. [Naver_Dalsanchek], [Seasonal] 위주로 배정. [Nate_Trend]는 트렌드성이라 필요 시에만.
+3. **textree(텍스트리)**: IT·테크·경제·생산성·AI 전문. [Naver_Textree], [Nate_Trend] 적합.
+4. **bbittul(삐뚤빼뚤)**: 트렌드·엔터·맛집·이슈·밈 전문. [Nate_Trend], [Naver_Bbittul] 위주로 배정.
 5. 같은 키워드는 한 번만 선택. 6개 모두 서로 다른 키워드.
 6. 각 선택에 대해 "선정 이유"를 한 줄로 한국어로 써줘.
 
 ## 응답 형식 (JSON만, 다른 텍스트 없이)
-source는 위 태그명 그대로: Signal | Google_Trends | Youtube | Naver_Dalsanchek | Naver_Textree | Naver_Bbittul | Seasonal
+source는 위 태그명 그대로: Nate_Trend | Naver_Dalsanchek | Naver_Textree | Naver_Bbittul | Seasonal
 {
   "selections": [
     { "writerId": "dalsanchek", "keyword": "후보에 나온 키워드 그대로", "source": "Naver_Dalsanchek", "rationale": "한 줄 선정 이유" },

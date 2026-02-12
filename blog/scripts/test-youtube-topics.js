@@ -1,10 +1,8 @@
 /**
- * 유튜브 인기 주제 수집만 테스트 (서버에서 로그/에러 확인용)
- * 사용법: blog 폴더에서
- *   node scripts/test-youtube-topics.js
- * 또는 프로젝트 루트에서
- *   node blog/scripts/test-youtube-topics.js
- * .env 있으면 로드됨. YOUTUBE_API_KEY 필요.
+ * 유튜브 인기 주제 수집만 테스트 (로그/에러 확인용)
+ * 서버 콘솔(이미 떠 있는 컨테이너에 명령 보내기):
+ *   docker-compose exec blog-scheduler node scripts/test-youtube-topics.js
+ * YOUTUBE_API_KEY 필요.
  */
 require('dotenv').config({ path: require('path').join(__dirname, '../../.env') });
 require('dotenv').config({ path: require('path').join(__dirname, '../.env') });

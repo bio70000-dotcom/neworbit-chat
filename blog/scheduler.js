@@ -571,7 +571,7 @@ async function runTopicSelectionTest() {
     await sendMessage('🧪 <b>주제 선정 테스트</b>를 시작합니다.');
 
     const pool = await getCandidatesPool(WRITERS, POSTS_PER_WRITER);
-    const SOURCE_TAGS = ['Signal', 'Google_Trends', 'Youtube', 'Naver_Dalsanchek', 'Naver_Textree', 'Naver_Bbittul', 'Seasonal'];
+    const SOURCE_TAGS = ['Nate_Trend', 'Naver_Dalsanchek', 'Naver_Textree', 'Naver_Bbittul', 'Seasonal'];
     const byTag = {};
     SOURCE_TAGS.forEach((tag) => { byTag[tag] = []; });
     for (const c of pool) {

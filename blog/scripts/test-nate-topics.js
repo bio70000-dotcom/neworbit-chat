@@ -1,24 +1,23 @@
 /**
- * 구글 트렌드 KR RSS 수집만 테스트 (로그/에러 확인용)
+ * 네이트 실시간 이슈 수집만 테스트 (EUC-KR 디코딩, 금지어 필터 확인)
  * 서버 콘솔(이미 떠 있는 컨테이너에 명령 보내기):
- *   docker-compose exec blog-scheduler node scripts/test-google-trends.js
- * API 키 없음. RSS URL만 fetch.
+ *   docker-compose exec blog-scheduler node scripts/test-nate-topics.js
  */
 require('dotenv').config({ path: require('path').join(__dirname, '../../.env') });
 require('dotenv').config({ path: require('path').join(__dirname, '../.env') });
 
-const { getGoogleTrendsDailyKR } = require('../utils/googleTrendsRss');
+const { getNateTrendTopics } = require('../utils/nateTrends');
 
 async function main() {
-  console.log('--- 구글 트렌드 KR RSS 테스트 ---');
+  console.log('--- 네이트 실시간 이슈 테스트 ---');
   console.log('');
 
   try {
-    const list = await getGoogleTrendsDailyKR(5);
+    const list = await getNateTrendTopics(10);
     console.log('결과 개수:', list.length);
     list.forEach((t, i) => console.log(`  ${i + 1}. ${t.keyword}`));
     if (list.length === 0) {
-      console.log('(위 [GoogleTrendsRss] 로그에서 원인 확인: URL 실패, 파싱 0건 등)');
+      console.log('(위 [NateTrends] 로그에서 원인 확인: 인코딩, 파싱, 금지어 등)');
     }
   } catch (e) {
     console.error('에러:', e.message);
