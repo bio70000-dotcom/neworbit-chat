@@ -9,11 +9,17 @@ const NAVER_NEWS_URL = 'https://openapi.naver.com/v1/search/news.json';
 // 헤드라인 위주 공통 시드 (당일 주요 뉴스 수집)
 const HEADLINE_SEEDS = ['오늘 뉴스', '주요 뉴스', '이슈', '헤드라인', '오늘의 뉴스'];
 
-/** 작가별 고정 쿼리 (Pool B: 타겟 구명조끼용). A그룹 실시간 트렌드에서 소외되는 dalsanchek/textree용 */
+/** 작가별 고정 쿼리 (Topic Pool ~25개 구성표 기준) */
 const WRITER_NAVER_QUERIES = {
-  dalsanchek: ['여행', '전시회', '주말 나들이', '힐링 에세이'],
-  textree: ['AI 기술', '애플', '삼성전자', '신제품 출시'],
-  bbittul: ['팝업스토어'], // A그룹에서 충분하므로 0~1개만
+  dalsanchek: ['주말 여행', '힐링 에세이', '전시회 추천'],
+  textree: ['AI 트렌드', '테크 신제품', '경제 전망'],
+  bbittul: ['팝업스토어', '편의점 신상', 'MZ 핫플'],
+};
+/** 작가별 정렬: dalsanchek 정확도순(sim), textree/bbittul 최신순(date) */
+const WRITER_NAVER_SORT = {
+  dalsanchek: 'sim',
+  textree: 'date',
+  bbittul: 'date',
 };
 
 // 언론사 화이트리스트 (originallink 호스트). 제거할 매체는 이 목록에서 삭제하면 됨.
@@ -262,12 +268,13 @@ async function getNaverTopicsByWriterQueries(writer, maxPerWriter = 4) {
   const queries = WRITER_NAVER_QUERIES[writer?.id];
   if (!Array.isArray(queries) || queries.length === 0) return [];
 
+  const sort = WRITER_NAVER_SORT[writer?.id] || 'date';
   const allTopics = [];
   for (const query of queries) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000);
     try {
-      const url = `${NAVER_NEWS_URL}?query=${encodeURIComponent(query)}&display=10&sort=date`;
+      const url = `${NAVER_NEWS_URL}?query=${encodeURIComponent(query)}&display=10&sort=${sort}`;
       const res = await fetch(url, {
         headers: { 'X-Naver-Client-Id': clientId, 'X-Naver-Client-Secret': clientSecret },
         signal: controller.signal,

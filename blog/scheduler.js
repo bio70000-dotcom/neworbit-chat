@@ -571,23 +571,20 @@ async function runTopicSelectionTest() {
     await sendMessage('🧪 <b>주제 선정 테스트</b>를 시작합니다.');
 
     const pool = await getCandidatesPool(WRITERS, POSTS_PER_WRITER);
-    const bySource = { seasonal: [], naver_news: [], youtube_popular: [], signal_bz: [] };
+    const SOURCE_TAGS = ['Signal', 'Google_Trends', 'Youtube', 'Naver_Dalsanchek', 'Naver_Textree', 'Naver_Bbittul', 'Seasonal'];
+    const byTag = {};
+    SOURCE_TAGS.forEach((tag) => { byTag[tag] = []; });
     for (const c of pool) {
-      const list = bySource[c.source] || [];
-      list.push(c);
-      bySource[c.source] = list;
+      const tag = c.sourceTag || c.source || 'Seasonal';
+      if (byTag[tag]) byTag[tag].push(c);
     }
 
     let poolMsg = '📋 <b>전체 풀 (' + pool.length + '개)</b>\n━━━━━━━━━━━━━━━━━━\n';
-    const sections = [
-      ['시즌', bySource.seasonal],
-      ['네이버 뉴스', bySource.naver_news],
-      ['유튜브 인기', bySource.youtube_popular],
-      ['시그널', bySource.signal_bz],
-    ];
-    for (const [label, list] of sections) {
-      poolMsg += `\n<b>[${label}]</b>\n`;
-      (list || []).forEach((c, i) => { poolMsg += `${i + 1}. ${(c.keyword || '').slice(0, 80)}\n`; });
+    for (const tag of SOURCE_TAGS) {
+      const list = byTag[tag] || [];
+      if (list.length === 0) continue;
+      poolMsg += `\n<b>[${tag}]</b>\n`;
+      list.forEach((c, i) => { poolMsg += `${i + 1}. ${(c.keyword || '').slice(0, 80)}\n`; });
     }
     if (poolMsg.length > MAX_MSG_LEN) {
       await sendMessage(poolMsg.slice(0, MAX_MSG_LEN) + '\n…(생략)');

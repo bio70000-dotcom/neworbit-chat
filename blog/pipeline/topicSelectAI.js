@@ -1,6 +1,6 @@
 /**
  * AI(Gemini)로 일일 6편 주제 추론 선정 + 선정 이유 생성
- * 전체 풀(20개)에서 각 작가의 영역·관심사에 맞는 키워드를 추론해 작가당 2개씩 선택. 소스별 개수 고정 없음.
+ * 전체 풀(~25개, 7소스)에서 각 작가 페르소나에 맞는 주제를 [Source_Tag]와 함께 전달해 작가당 2개씩 선택.
  */
 
 const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
@@ -42,9 +42,33 @@ async function callGemini(prompt, maxTokens = 2048) {
   }
 }
 
+/** AI가 반환한 키워드와 풀 제목 매칭용 정규화 (공백·말줄임 통일) */
+function normalizeKeywordForMatch(str) {
+  if (!str || typeof str !== 'string') return '';
+  return str
+    .replace(/\s+/g, ' ')
+    .replace(/[.．…]+$/g, '')
+    .trim();
+}
+
+/** 정확히 일치하지 않을 때 풀 후보 중 가장 비슷한 항목 찾기 (접두사/포함, 미사용만) */
+function findBestMatchCandidate(selKeyword, candidatesPool, usedKeywords) {
+  const norm = normalizeKeywordForMatch(selKeyword);
+  if (!norm) return null;
+  for (const c of candidatesPool) {
+    if (usedKeywords.has(c.keyword)) continue;
+    const poolKey = (c.keyword || '').trim();
+    const poolNorm = normalizeKeywordForMatch(poolKey);
+    if (poolNorm === norm || poolKey === norm) return c;
+    if (poolNorm.startsWith(norm) || norm.startsWith(poolNorm)) return c;
+    if (poolKey.length >= 10 && (poolKey.includes(norm) || norm.includes(poolKey))) return c;
+  }
+  return null;
+}
+
 /**
  * 후보 풀과 작가 정보로 AI가 6편 선정 (2 per writer) + 선정 이유
- * @param {Array} candidatesPool - [{ keyword, source, category }, ...] (writerId 없음, 전체 풀 20개)
+ * @param {Array} candidatesPool - [{ keyword, source, sourceTag, category }, ...] (전체 풀 ~25개)
  * @param {Array} writers - [{ id, nickname, categories, bio }, ...]
  * @returns {Promise<Array<{writer, topics: [{keyword, source, category?, rationale}]}>>} plan
  */
@@ -56,14 +80,18 @@ async function selectTopicsWithAI(candidatesPool, writers) {
     )
     .join('\n');
 
-  const bySource = { seasonal: [], naver_news: [], google_trends_rss: [], youtube_popular: [], signal_bz: [] };
+  const SOURCE_TAGS = ['Signal', 'Google_Trends', 'Youtube', 'Naver_Dalsanchek', 'Naver_Textree', 'Naver_Bbittul', 'Seasonal'];
+  const byTag = {};
+  SOURCE_TAGS.forEach((tag) => { byTag[tag] = []; });
   for (const c of candidatesPool) {
-    const list = bySource[c.source] || [];
-    list.push(c);
-    bySource[c.source] = list;
+    const tag = c.sourceTag || c.source || 'Seasonal';
+    if (byTag[tag]) byTag[tag].push(c);
+    else byTag[tag] = [c];
   }
 
   const formatCandidate = (c, i) => {
+    const tag = c.sourceTag || c.source || '';
+    const prefix = tag ? `[${tag}] ` : '';
     let vol = '';
     if (c.searchVolumeLabel && c.searchVolumeLabel !== '-') {
       vol = ` (검색량: ${c.searchVolumeLabel}`;
@@ -74,43 +102,36 @@ async function selectTopicsWithAI(candidatesPool, writers) {
       }
       vol += ')';
     }
-    return `${i + 1}. ${c.keyword}${vol}`;
+    return `${i + 1}. ${prefix}${c.keyword}${vol}`;
   };
 
-  const candidatesText = [
-    '## 시즌(seasonal) 후보',
-    (bySource.seasonal || []).map(formatCandidate).join('\n') || '(없음)',
-    '## 네이버 뉴스(naver_news) 후보 — 작가별 맞춤 쿼리(여행/전시/힐링, AI/테크 등)로 수집한 주제. 달산책·텍스트리에게 우선 배정 권장.',
-    (bySource.naver_news || []).map(formatCandidate).join('\n') || '(없음)',
-    '## 구글 트렌드(google_trends_rss) + 유튜브 뉴스(youtube_popular) + 시그널(signal_bz) 후보 — 실시간 트렌드/이슈. 주로 bbittul, 필요 시 textree에 적합. 달산책(감성·힐링)에는 사건/사고·정치성 주제 배정 금지.',
-    [
-      (bySource.google_trends_rss || []).map(formatCandidate).join('\n'),
-      (bySource.youtube_popular || []).map(formatCandidate).join('\n'),
-      (bySource.signal_bz || []).map(formatCandidate).join('\n'),
-    ].filter(Boolean).join('\n') || '(없음)',
-  ].join('\n');
+  const candidatesText = SOURCE_TAGS.map((tag) => {
+    const list = byTag[tag] || [];
+    const label = tag === 'Signal' ? 'Signal (실시간 급상승)' : tag === 'Youtube' ? 'Youtube (뉴스/정치)' : tag;
+    return `## ${label}\n${list.map(formatCandidate).join('\n') || '(없음)'}`;
+  }).join('\n\n');
 
   const prompt = `너는 블로그 편집장이다. 아래 작가 3명이 각각 오늘 2편씩 총 6편을 쓴다. 전체 후보 풀에서 정확히 6개를 골라야 한다.
 
 ## 작가
 ${writersDesc}
 
-## 후보 풀 (반드시 아래 목록에 있는 키워드만 선택. 괄호 안 검색량은 네이버 블로그 검색결과 수 기준)
+## 후보 풀 (각 항목 앞 [Source_Tag]는 출처·성격 표시. 반드시 목록에 있는 키워드만 선택)
 ${candidatesText}
 
 ## 규칙
-1. **작가의 categories와 bio에 가장 적합한 주제를 우선** 선택한다. 소스별 개수는 고정하지 않는다.
-2. **dalsanchek(달산책)**: 라이프스타일·감성·힐링·여행·에세이 전문. **실시간 트렌드 중 사건/사고·정치·자극 이슈는 절대 배정하지 말 것.** 네이버 뉴스(naver_news) 그룹의 여행/전시/힐링/주말 나들이 성격 주제를 우선 배정.
-3. **textree(텍스트리)**: IT·테크·경제·생산성·AI 전문. 트렌드·테크 주제 적합.
-4. **bbittul(삐뚤빼뚤)**: 트렌드·엔터·맛집·이슈·밈 전문. 구글 트렌드/유튜브/시그널 등 실시간 이슈 배정 적합.
+1. **작가의 페르소나(categories, bio)와 가장 적합한 주제를 우선 매칭**한다.
+2. **dalsanchek(달산책)**: 라이프스타일·감성·힐링·여행·에세이 전문. **자극적인 이슈(Signal, Youtube)는 절대 배정하지 말 것.** [Naver_Dalsanchek], [Seasonal] 위주로 배정.
+3. **textree(텍스트리)**: IT·테크·경제·생산성·AI 전문. [Naver_Textree], [Google_Trends], [Signal] 등 적합.
+4. **bbittul(삐뚤빼뚤)**: 트렌드·엔터·맛집·이슈·밈 전문. [Signal], [Youtube], [Google_Trends], [Naver_Bbittul] 적합.
 5. 같은 키워드는 한 번만 선택. 6개 모두 서로 다른 키워드.
 6. 각 선택에 대해 "선정 이유"를 한 줄로 한국어로 써줘.
 
 ## 응답 형식 (JSON만, 다른 텍스트 없이)
-source는 후보 풀에 표시된 값 그대로: seasonal | naver_news | google_trends_rss | youtube_popular | signal_bz
+source는 위 태그명 그대로: Signal | Google_Trends | Youtube | Naver_Dalsanchek | Naver_Textree | Naver_Bbittul | Seasonal
 {
   "selections": [
-    { "writerId": "dalsanchek", "keyword": "후보에 나온 키워드 그대로", "source": "naver_news", "rationale": "한 줄 선정 이유" },
+    { "writerId": "dalsanchek", "keyword": "후보에 나온 키워드 그대로", "source": "Naver_Dalsanchek", "rationale": "한 줄 선정 이유" },
     ...총 6개
   ]
 }`;
@@ -143,7 +164,7 @@ source는 후보 풀에 표시된 값 그대로: seasonal | naver_news | google_
 
   const keywordToCandidate = new Map();
   for (const c of candidatesPool) {
-    keywordToCandidate.set(c.keyword.trim(), c);
+    keywordToCandidate.set((c.keyword || '').trim(), c);
   }
 
   const plan = writers.map((w) => ({ writer: w, topics: [] }));
@@ -153,8 +174,15 @@ source는 후보 풀에 표시된 값 그대로: seasonal | naver_news | google_
     const writerIndex = writers.findIndex((w) => w.id === sel.writerId);
     if (writerIndex === -1) continue;
     const k = (sel.keyword || '').trim();
-    const candidate = keywordToCandidate.get(k) || candidatesPool.find((c) => (c.keyword || '').trim() === k);
-    if (!candidate || usedKeywords.has(candidate.keyword)) continue;
+    let candidate =
+      keywordToCandidate.get(k) ||
+      candidatesPool.find((c) => (c.keyword || '').trim() === k);
+    if (!candidate) candidate = findBestMatchCandidate(k, candidatesPool, usedKeywords);
+    if (!candidate) {
+      console.warn('[TopicSelectAI] 풀에 없는 키워드 스킵:', sel.writerId, k.slice(0, 50));
+      continue;
+    }
+    if (usedKeywords.has(candidate.keyword)) continue;
     usedKeywords.add(candidate.keyword);
     const topic = {
       keyword: candidate.keyword,
