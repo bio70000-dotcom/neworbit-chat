@@ -42,38 +42,6 @@ async function callGemini(prompt, maxTokens = 2048) {
   }
 }
 
-/** JSON 파싱 실패 시 selections만 정규식으로 추출 시도 (따옴표/줄바꿈으로 깨진 경우) */
-function tryRepairSelectionsJson(jsonStr) {
-  const selections = [];
-  const blockRe = /\{\s*"writerId"\s*:\s*"([^"]*)"\s*,\s*"keyword"\s*:\s*"((?:[^"\\]|\\.)*?)"\s*,\s*"source"\s*:\s*"([^"]*)"\s*,\s*"rationale"\s*:\s*"((?:[^"\\]|\\.)*?)"\s*\}/g;
-  let m;
-  while ((m = blockRe.exec(jsonStr)) !== null && selections.length < 6) {
-    selections.push({
-      writerId: m[1].trim(),
-      keyword: (m[2] || '').replace(/\\"/g, '"').trim(),
-      source: (m[3] || '').trim(),
-      rationale: (m[4] || '').replace(/\\"/g, '"').trim(),
-    });
-  }
-  if (selections.length < 6) {
-    const simpleRe = /\{\s*"writerId"\s*:\s*"([^"]*)"\s*,\s*"keyword"\s*:\s*"([^"]*)"\s*,\s*"source"\s*:\s*"([^"]*)"\s*,\s*"rationale"\s*:\s*"([^"]*)"\s*\}/g;
-    selections.length = 0;
-    while ((m = simpleRe.exec(jsonStr)) !== null && selections.length < 6) {
-      selections.push({
-        writerId: m[1].trim(),
-        keyword: (m[2] || '').trim(),
-        source: (m[3] || '').trim(),
-        rationale: (m[4] || '').trim(),
-      });
-    }
-  }
-  if (selections.length >= 6) {
-    console.warn('[TopicSelectAI] JSON 복구로 selections', selections.length, '개 추출');
-    return { selections: selections.slice(0, 6) };
-  }
-  return null;
-}
-
 /** AI가 반환한 키워드와 풀 제목 매칭용 정규화 (공백·말줄임 통일) */
 function normalizeKeywordForMatch(str) {
   if (!str || typeof str !== 'string') return '';
@@ -159,15 +127,19 @@ ${candidatesText}
 5. 같은 키워드는 한 번만 선택. 6개 모두 서로 다른 키워드.
 6. 각 선택에 대해 "선정 이유"를 한 줄로 한국어로 써줘.
 
-## 응답 형식 (JSON만, 다른 텍스트 없이)
-source는 위 태그명 그대로: Nate_Trend | Naver_Dalsanchek | Naver_Textree | Naver_Bbittul | Seasonal
-keyword와 rationale 값 안에는 큰따옴표(\")나 줄바꿈을 넣지 마라. 제목에 따옴표가 있으면 생략하거나 공백으로 써라.
-{
-  "selections": [
-    { "writerId": "dalsanchek", "keyword": "후보에 나온 키워드 그대로", "source": "Naver_Dalsanchek", "rationale": "한 줄 선정 이유" },
-    ...총 6개
-  ]
-}`;
+## 응답 형식 (반드시 이 형식만 사용)
+아래처럼 6줄만 출력하라. 한 줄에 한 개 선정. 구분자는 탭(\\t) 하나.
+줄 형식: writerId\\tkeyword\\tsource\\trationale
+- writerId: dalsanchek | textree | bbittul
+- keyword: 위 후보 목록에 적힌 키워드를 **한 글자도 바꾸지 말고 그대로** 복사
+- source: Nate_Trend | Naver_Dalsanchek | Naver_Textree | Naver_Bbittul | Seasonal
+- rationale: 선정 이유 한 줄 (따옴표·탭·줄바꿈 없이)
+keyword와 rationale 안에 탭이나 줄바꿈을 넣지 마라. 따옴표가 있는 제목은 따옴표를 빼고 써라.
+
+예시 (실제로는 탭으로 구분):
+dalsanchek	발렌타인데이 선물 추천	Seasonal	시즌에 맞는 주제
+textree	삼성전자 HBM4 양산	Nate_Trend	테크 이슈
+...총 6줄`;
 
   let raw;
   try {
@@ -178,35 +150,30 @@ keyword와 rationale 값 안에는 큰따옴표(\")나 줄바꿈을 넣지 마�
     return { plan: null, error: `API 오류: ${msg.slice(0, 80)}` };
   }
 
-  let jsonStr = raw
-    .replace(/^```json?\s*/i, '')
+  // TSV 형식 파싱: 한 줄에 writerId\tkeyword\tsource\trationale (6줄)
+  const lines = raw
+    .replace(/^```\w*\s*/i, '')
     .replace(/```\s*$/i, '')
-    .trim();
-  const firstBrace = jsonStr.indexOf('{');
-  const lastBrace = jsonStr.lastIndexOf('}');
-  if (firstBrace !== -1 && lastBrace > firstBrace) {
-    jsonStr = jsonStr.slice(firstBrace, lastBrace + 1);
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+  const selections = [];
+  const validWriterIds = new Set(writers.map((w) => w.id));
+  const validSources = new Set(SOURCE_TAGS);
+  for (const line of lines) {
+    if (selections.length >= 6) break;
+    const parts = line.split('\t');
+    if (parts.length < 4) continue;
+    const writerId = (parts[0] || '').trim();
+    const source = (parts[parts.length - 2] || '').trim();
+    const rationale = (parts[parts.length - 1] || '').trim();
+    const keyword = parts.length === 4 ? (parts[1] || '').trim() : parts.slice(1, -2).join('\t').trim();
+    if (!validWriterIds.has(writerId) || !validSources.has(source)) continue;
+    selections.push({ writerId, keyword, source, rationale });
   }
-  // AI가 문자열 값 안에 줄바꿈을 넣으면 JSON이 깨지므로 제거
-  jsonStr = jsonStr.replace(/\r\n?|\n/g, ' ').replace(/\s+/g, ' ').trim();
-
-  let data;
-  try {
-    data = JSON.parse(jsonStr);
-  } catch (e) {
-    const repaired = tryRepairSelectionsJson(jsonStr);
-    if (repaired) {
-      data = repaired;
-    } else {
-      console.warn('[TopicSelectAI] JSON 파싱 실패:', e.message, '응답 앞 200자:', jsonStr.slice(0, 200));
-      return { plan: null, error: `JSON 파싱 실패: ${e.message}` };
-    }
-  }
-
-  const selections = data?.selections;
-  if (!Array.isArray(selections) || selections.length !== 6) {
-    console.warn('[TopicSelectAI] selections 개수 이상:', selections?.length);
-    return { plan: null, error: `AI가 6개가 아닌 ${selections?.length ?? 0}개 반환` };
+  if (selections.length !== 6) {
+    console.warn('[TopicSelectAI] TSV 파싱 결과 6줄 아님:', selections.length, '유효 줄:', lines.length);
+    return { plan: null, error: `AI 응답 형식 오류: 6줄(탭 구분)이 아님. 유효 줄 ${selections.length}개.` };
   }
 
   const keywordToCandidate = new Map();
