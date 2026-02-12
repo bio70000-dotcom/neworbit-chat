@@ -42,6 +42,38 @@ async function callGemini(prompt, maxTokens = 2048) {
   }
 }
 
+/** JSON 파싱 실패 시 selections만 정규식으로 추출 시도 (따옴표/줄바꿈으로 깨진 경우) */
+function tryRepairSelectionsJson(jsonStr) {
+  const selections = [];
+  const blockRe = /\{\s*"writerId"\s*:\s*"([^"]*)"\s*,\s*"keyword"\s*:\s*"((?:[^"\\]|\\.)*?)"\s*,\s*"source"\s*:\s*"([^"]*)"\s*,\s*"rationale"\s*:\s*"((?:[^"\\]|\\.)*?)"\s*\}/g;
+  let m;
+  while ((m = blockRe.exec(jsonStr)) !== null && selections.length < 6) {
+    selections.push({
+      writerId: m[1].trim(),
+      keyword: (m[2] || '').replace(/\\"/g, '"').trim(),
+      source: (m[3] || '').trim(),
+      rationale: (m[4] || '').replace(/\\"/g, '"').trim(),
+    });
+  }
+  if (selections.length < 6) {
+    const simpleRe = /\{\s*"writerId"\s*:\s*"([^"]*)"\s*,\s*"keyword"\s*:\s*"([^"]*)"\s*,\s*"source"\s*:\s*"([^"]*)"\s*,\s*"rationale"\s*:\s*"([^"]*)"\s*\}/g;
+    selections.length = 0;
+    while ((m = simpleRe.exec(jsonStr)) !== null && selections.length < 6) {
+      selections.push({
+        writerId: m[1].trim(),
+        keyword: (m[2] || '').trim(),
+        source: (m[3] || '').trim(),
+        rationale: (m[4] || '').trim(),
+      });
+    }
+  }
+  if (selections.length >= 6) {
+    console.warn('[TopicSelectAI] JSON 복구로 selections', selections.length, '개 추출');
+    return { selections: selections.slice(0, 6) };
+  }
+  return null;
+}
+
 /** AI가 반환한 키워드와 풀 제목 매칭용 정규화 (공백·말줄임 통일) */
 function normalizeKeywordForMatch(str) {
   if (!str || typeof str !== 'string') return '';
@@ -129,6 +161,7 @@ ${candidatesText}
 
 ## 응답 형식 (JSON만, 다른 텍스트 없이)
 source는 위 태그명 그대로: Nate_Trend | Naver_Dalsanchek | Naver_Textree | Naver_Bbittul | Seasonal
+keyword와 rationale 값 안에는 큰따옴표(\")나 줄바꿈을 넣지 마라. 제목에 따옴표가 있으면 생략하거나 공백으로 써라.
 {
   "selections": [
     { "writerId": "dalsanchek", "keyword": "후보에 나온 키워드 그대로", "source": "Naver_Dalsanchek", "rationale": "한 줄 선정 이유" },
@@ -154,13 +187,20 @@ source는 위 태그명 그대로: Nate_Trend | Naver_Dalsanchek | Naver_Textree
   if (firstBrace !== -1 && lastBrace > firstBrace) {
     jsonStr = jsonStr.slice(firstBrace, lastBrace + 1);
   }
+  // AI가 문자열 값 안에 줄바꿈을 넣으면 JSON이 깨지므로 제거
+  jsonStr = jsonStr.replace(/\r\n?|\n/g, ' ').replace(/\s+/g, ' ').trim();
 
   let data;
   try {
     data = JSON.parse(jsonStr);
   } catch (e) {
-    console.warn('[TopicSelectAI] JSON 파싱 실패:', e.message, '응답 앞 200자:', jsonStr.slice(0, 200));
-    return { plan: null, error: `JSON 파싱 실패: ${e.message}` };
+    const repaired = tryRepairSelectionsJson(jsonStr);
+    if (repaired) {
+      data = repaired;
+    } else {
+      console.warn('[TopicSelectAI] JSON 파싱 실패:', e.message, '응답 앞 200자:', jsonStr.slice(0, 200));
+      return { plan: null, error: `JSON 파싱 실패: ${e.message}` };
+    }
   }
 
   const selections = data?.selections;
