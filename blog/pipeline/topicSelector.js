@@ -334,6 +334,22 @@ async function getCandidatesPool(writers, postsPerWriter = 2) {
     for (const t of list || []) await addToPool(t, sourceLabel, sourceTag);
   }
 
+  // 구글 트렌드·시그널 둘 다 0건이면 풀 부족 → 트렌드 폴백으로 20개 이상 유지 (AI 선정 실패 방지)
+  const TREND_FALLBACK_KEYWORDS = [
+    '실시간 검색어 트렌드', '오늘 인기 이슈', '핫이슈 정리', '실시간 키워드', '오늘의 트렌드',
+    '인기 검색어', '실시간 이슈', '트렌드 토픽',
+  ];
+  const needFallback = pool.length < 18 && signalList.length === 0 && googleList.length === 0;
+  if (needFallback) {
+    const fallbackTag = 'Signal';
+    const fallbackSource = 'signal_bz';
+    for (const kw of TREND_FALLBACK_KEYWORDS) {
+      if (pool.length >= 22) break;
+      await addToPool({ keyword: kw, category: 'trending', source: fallbackSource }, fallbackSource, fallbackTag);
+    }
+    console.warn('[TopicSelector] 구글/시그널 0건 → 트렌드 폴백 적용, 풀:', pool.length, '개');
+  }
+
   console.log(`[TopicSelector] 후보 풀: ${pool.length}개 (7소스 병렬, Signal 포함 ~25개 목표)`);
   return pool;
 }

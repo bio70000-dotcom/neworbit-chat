@@ -33,17 +33,22 @@ function extractKeywordsFromHtml($, maxCount) {
 }
 
 /**
- * __NEXT_DATA__ 스크립트에서 키워드 배열 추출 시도
+ * __NEXT_DATA__ 또는 기타 script 내 JSON에서 키워드 배열 추출
  */
 function extractFromNextData(html, maxCount) {
-  const match = html.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/i);
-  if (!match) return [];
+  const scriptMatch = html.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/i)
+    || html.match(/<script[^>]*type="application\/json"[^>]*>([\s\S]*?)<\/script>/i);
+  if (!scriptMatch) return [];
   try {
-    const json = JSON.parse(match[1]);
-    const props = json?.props?.pageProps || json?.props || {};
-    const list = props.realtimeKeywords || props.keywords || props.list || [];
+    const json = JSON.parse(scriptMatch[1]);
+    const props = json?.props?.pageProps || json?.props || json?.pageProps || {};
+    const list = props.realtimeKeywords || props.keywords || props.list || props.data || [];
     if (Array.isArray(list)) {
-      return list.slice(0, maxCount).map((x) => (typeof x === 'string' ? x : x?.keyword || x?.word || x?.text || '')).filter((t) => t.length >= 2 && t.length <= 80);
+      const words = list
+        .slice(0, maxCount * 2)
+        .map((x) => (typeof x === 'string' ? x : x?.keyword || x?.word || x?.text || x?.name || ''))
+        .filter((t) => t && t.length >= 2 && t.length <= 80);
+      return words.slice(0, maxCount);
     }
     if (typeof list === 'object' && list.items) {
       return list.items.slice(0, maxCount).map((x) => x?.keyword || x?.word || x?.text || '').filter(Boolean);
@@ -95,7 +100,8 @@ async function getSignalTopics(maxCount = 5) {
         console.log(`[SignalBz] 실시간 검색어 ${result.length}개 수집 (${url})`);
         return result;
       }
-      console.warn('[SignalBz] 키워드 0건 추출, HTML 샘플:', html.slice(0, 400).replace(/\s+/g, ' '));
+      const hasNextData = /__NEXT_DATA__|application\/json/.test(html);
+      console.warn('[SignalBz] 키워드 0건 추출. HTML길이:', html.length, 'script데이터:', hasNextData ? '있음' : '없음');
     } catch (e) {
       clearTimeout(timeout);
       console.warn('[SignalBz] 수집 실패:', url, e.message);
