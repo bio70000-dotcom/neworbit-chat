@@ -1,10 +1,32 @@
 /**
  * 네이버 뉴스 기반 주제 선정 모듈
- * 네이버 뉴스 API에서 당일 인기 키워드를 검색하여
- * 블로그에 적합한 주제를 추출
+ * 헤드라인 위주 쿼리 + 언론사 화이트리스트 + 광고/인터뷰 제외
  */
 
+const path = require('path');
 const NAVER_NEWS_URL = 'https://openapi.naver.com/v1/search/news.json';
+
+// 헤드라인 위주 공통 시드 (당일 주요 뉴스 수집)
+const HEADLINE_SEEDS = ['오늘 뉴스', '주요 뉴스', '이슈', '헤드라인', '오늘의 뉴스'];
+
+// 언론사 화이트리스트 (originallink 호스트). 제거할 매체는 이 목록에서 삭제하면 됨.
+let PUBLISHER_DOMAINS = [];
+try {
+  PUBLISHER_DOMAINS = require(path.join(__dirname, '../config/publisherDomains.json'));
+} catch (e) {
+  console.warn('[NaverTopics] publisherDomains.json 로드 실패, 화이트리스트 비적용:', e.message);
+}
+
+function isAllowedPublisher(originallink) {
+  if (!originallink || PUBLISHER_DOMAINS.length === 0) return true;
+  try {
+    const u = new URL(originallink);
+    const host = (u.hostname || '').toLowerCase().replace(/^www\./, '');
+    return PUBLISHER_DOMAINS.some((d) => host === d || host.endsWith('.' + d));
+  } catch (e) {
+    return false;
+  }
+}
 
 // 작가 id별 fallback 시드 (writer.categories 없을 때만 사용)
 const WRITER_SEEDS_FALLBACK = {
@@ -76,12 +98,14 @@ async function getNaverNewsTopics(writer) {
     return [];
   }
 
+  // 헤드라인 위주 시드 우선 사용 (당일 주요 뉴스)
+  const headlineSeeds = [...HEADLINE_SEEDS];
   const writerSeeds = buildSeedsFromWriter(writer);
   const seeds = [];
-  const shuffled = [...writerSeeds].sort(() => Math.random() - 0.5);
-  for (let i = 0; i < 5 && i < shuffled.length; i++) {
-    seeds.push(shuffled[i]);
-  }
+  const shuffled = [...headlineSeeds].sort(() => Math.random() - 0.5);
+  for (let i = 0; i < 4 && i < shuffled.length; i++) seeds.push(shuffled[i]);
+  const shuffledWriter = [...writerSeeds].sort(() => Math.random() - 0.5);
+  if (shuffledWriter.length) seeds.push(shuffledWriter[0]);
 
   const allTopics = [];
 
@@ -90,7 +114,7 @@ async function getNaverNewsTopics(writer) {
     const timeout = setTimeout(() => controller.abort(), 5000);
 
     try {
-      const url = `${NAVER_NEWS_URL}?query=${encodeURIComponent(seed)}&display=5&sort=date`;
+      const url = `${NAVER_NEWS_URL}?query=${encodeURIComponent(seed)}&display=20&sort=date`;
       const res = await fetch(url, {
         headers: {
           'X-Naver-Client-Id': clientId,
@@ -105,12 +129,10 @@ async function getNaverNewsTopics(writer) {
       const items = data?.items || [];
 
       for (const item of items) {
+        if (PUBLISHER_DOMAINS.length > 0 && !isAllowedPublisher(item.originallink)) continue;
         const title = stripHtml(item.title);
-        // 뉴스 제목에서 블로그 주제로 변환 가능한 키워드 추출
         const topic = extractBlogTopic(title, seed);
-        if (topic) {
-          allTopics.push(topic);
-        }
+        if (topic) allTopics.push(topic);
       }
     } catch (e) {
       // 타임아웃 등 무시
@@ -154,7 +176,7 @@ function extractBlogTopic(newsTitle, searchSeed) {
   // 너무 짧거나 긴 제목 제외
   if (newsTitle.length < 8 || newsTitle.length > 50) return null;
 
-  // 정치, 사건/사고, 주식 종목 등 부적합한 주제 필터링
+  // 정치, 사건/사고, 주식, 광고/인터뷰 등 부적합 필터링
   const excludePatterns = [
     /정치|국회|대통령|의원|여당|야당|탄핵/,
     /살인|사망|사고|폭행|체포|구속|재판/,
@@ -162,6 +184,7 @@ function extractBlogTopic(newsTitle, searchSeed) {
     /검찰|경찰|수사|기소|판결/,
     /전쟁|군사|미사일|북한/,
     /속보|단독|긴급/,
+    /인터뷰|광고|협찬|스폰서|PR\s|특집|기자\s*chat|\[PR\]|\[기자\]/i,
   ];
 
   for (const pattern of excludePatterns) {

@@ -130,6 +130,10 @@ async function checkForSchedulerCommand() {
       console.log(`[Telegram] command: resume (text: "${text}")`);
       return 'resume';
     }
+    if (['주제 테스트', '주제 선정 테스트', '주제선정 테스트'].some((c) => lower === c || lower.includes(c))) {
+      console.log(`[Telegram] command: topic_test (text: "${text}")`);
+      return 'topic_test';
+    }
     if (['시작', '주제 선정', '주제선정', '시작해', '오늘 주제'].some((c) => lower === c || lower.includes(c))) {
       console.log(`[Telegram] command: start (text: "${text}")`);
       return 'start';

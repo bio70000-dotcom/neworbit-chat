@@ -15,7 +15,8 @@ require('dotenv').config();
 const fs = require('fs');
 const { WRITERS } = require('./writers');
 
-const { selectTopics, selectDailyTopicsWithQuota, getTopicFromSource } = require('./pipeline/topicSelector');
+const { selectTopics, selectDailyTopicsWithQuota, getTopicFromSource, getCandidatesPool, enrichPoolWithSearchVolume } = require('./pipeline/topicSelector');
+const { selectTopicsWithAI } = require('./pipeline/topicSelectAI');
 
 function serverLog(msg, data = {}) {
   const line = JSON.stringify({ ts: new Date().toISOString(), msg, ...data }) + '\n';
@@ -562,6 +563,59 @@ async function dailyCycle(opts = {}) {
   }
 }
 
+// ── 주제 선정 테스트 (텔레그램 3단계 보고) ──────────────────────────────
+const MAX_MSG_LEN = 4000;
+
+async function runTopicSelectionTest() {
+  try {
+    await sendMessage('🧪 <b>주제 선정 테스트</b>를 시작합니다.');
+
+    const pool = await getCandidatesPool(WRITERS, POSTS_PER_WRITER);
+    const bySource = { seasonal: [], naver_news: [], youtube_popular: [], signal_bz: [] };
+    for (const c of pool) {
+      const list = bySource[c.source] || [];
+      list.push(c);
+      bySource[c.source] = list;
+    }
+
+    let poolMsg = '📋 <b>전체 풀 (' + pool.length + '개)</b>\n━━━━━━━━━━━━━━━━━━\n';
+    const sections = [
+      ['시즌', bySource.seasonal],
+      ['네이버 뉴스', bySource.naver_news],
+      ['유튜브 인기', bySource.youtube_popular],
+      ['시그널', bySource.signal_bz],
+    ];
+    for (const [label, list] of sections) {
+      poolMsg += `\n<b>[${label}]</b>\n`;
+      (list || []).forEach((c, i) => { poolMsg += `${i + 1}. ${(c.keyword || '').slice(0, 80)}\n`; });
+    }
+    if (poolMsg.length > MAX_MSG_LEN) {
+      await sendMessage(poolMsg.slice(0, MAX_MSG_LEN) + '\n…(생략)');
+    } else {
+      await sendMessage(poolMsg);
+    }
+
+    await enrichPoolWithSearchVolume(pool);
+    const plan = await selectTopicsWithAI(pool, WRITERS);
+
+    if (!plan || plan.every((p) => p.topics.length === 0)) {
+      await sendMessage('❌ AI 선정 실패 (후보 부족 또는 API 오류).');
+      return;
+    }
+
+    let finalMsg = '✅ <b>최종 선정 (작가별 2개)</b>\n━━━━━━━━━━━━━━━━━━\n';
+    for (const entry of plan) {
+      finalMsg += `\n<b>${entry.writer.nickname}</b>\n`;
+      (entry.topics || []).forEach((t, i) => { finalMsg += `  ${i + 1}. ${(t.keyword || '').slice(0, 60)}\n`; });
+    }
+    await sendMessage(finalMsg);
+    console.log('[Scheduler] 주제 선정 테스트 완료');
+  } catch (e) {
+    console.error('[Scheduler] 주제 테스트 에러:', e.message);
+    await sendMessage('❌ 주제 테스트 중 오류: ' + (e.message || '').slice(0, 150));
+  }
+}
+
 // ── 메인 루프 ──────────────────────────────
 async function main() {
   console.log('▓'.repeat(60));
@@ -577,7 +631,7 @@ async function main() {
     process.exit(1);
   }
 
-  await sendMessage('🟢 Blog Scheduler가 시작되었습니다.\n텔레그램에서 <b>시작</b> 또는 <b>주제 선정</b> 입력 시 즉시 주제 선정을 시작합니다.');
+  await sendMessage('🟢 Blog Scheduler가 시작되었습니다.\n텔레그램에서 <b>시작</b> 또는 <b>주제 선정</b> 입력 시 즉시 주제 선정을 시작합니다.\n<b>주제 테스트</b> 입력 시 풀(20개)과 최종 작가별 선정만 보고합니다.');
 
   // --test-5min: 즉시 주제 선정 → 텔레그램 보고 → 승인 후 5분 간격 6편 발행 (로그는 DEBUG_LOG_PATH에)
   if (process.argv.includes('--test-5min')) {
@@ -620,6 +674,9 @@ async function main() {
         } else if (cmd === 'status') {
           const remainingMs = waitMs - (Date.now() - loopStartTime);
           await sendMessage(formatSchedulerStatus(remainingMs > 0 ? remainingMs : 0));
+        } else if (cmd === 'topic_test') {
+          console.log('[Scheduler] 사용자 "주제 테스트" 명령 수신');
+          await runTopicSelectionTest();
         } else if (cmd === 'start') {
           triggeredByCommand = true;
           schedulerPaused = false;
