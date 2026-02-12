@@ -109,6 +109,10 @@ async function getNaverNewsTopics(writer) {
 
   const allTopics = [];
 
+  let totalItems = 0;
+  let passedWhitelist = 0;
+  let passedTopic = 0;
+
   for (const seed of seeds) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000);
@@ -127,18 +131,26 @@ async function getNaverNewsTopics(writer) {
 
       const data = await res.json();
       const items = data?.items || [];
+      totalItems += items.length;
 
       for (const item of items) {
         if (PUBLISHER_DOMAINS.length > 0 && !isAllowedPublisher(item.originallink)) continue;
+        passedWhitelist++;
         const title = stripHtml(item.title);
-        const topic = extractBlogTopic(title, seed);
-        if (topic) allTopics.push(topic);
+        const topic = extractBlogTopic(title, seed, true);
+        if (topic) {
+          passedTopic++;
+          allTopics.push(topic);
+        }
       }
     } catch (e) {
       // 타임아웃 등 무시
     } finally {
       clearTimeout(timeout);
     }
+  }
+  if (totalItems > 0) {
+    console.log(`[NaverTopics] API ${totalItems}건, 화이트리스트 통과 ${passedWhitelist}건, 주제 추출 ${passedTopic}건 → 고유 ${allTopics.length}건`);
   }
 
   // 중복 제거
@@ -170,11 +182,12 @@ async function getNaverNewsTopics(writer) {
 
 /**
  * 뉴스 제목에서 블로그 주제를 추출
- * SEO 친화적이고 일반 독자가 검색할 만한 주제로 변환
+ * @param {string} newsTitle
+ * @param {string} searchSeed
+ * @param {boolean} [headlineRelaxed=false] - true면 헤드라인 모드(블로그 적합 패턴 완화)
  */
-function extractBlogTopic(newsTitle, searchSeed) {
-  // 너무 짧거나 긴 제목 제외
-  if (newsTitle.length < 8 || newsTitle.length > 50) return null;
+function extractBlogTopic(newsTitle, searchSeed, headlineRelaxed = false) {
+  if (newsTitle.length < 6 || newsTitle.length > 60) return null;
 
   // 정치, 사건/사고, 주식, 광고/인터뷰 등 부적합 필터링
   const excludePatterns = [
@@ -191,7 +204,7 @@ function extractBlogTopic(newsTitle, searchSeed) {
     if (pattern.test(newsTitle)) return null;
   }
 
-  // 블로그 적합 키워드가 포함된 제목만 선택
+  // 헤드라인 모드: 뉴스 제목에서 자주 쓰이는 단어만 있어도 통과 (결과 부족 방지)
   const blogFriendly = [
     /추천|방법|꿀팁|후기|비교|리뷰|정리|모음|가이드/,
     /건강|다이어트|운동|뷰티|피부|헤어/,
@@ -202,9 +215,13 @@ function extractBlogTopic(newsTitle, searchSeed) {
     /트렌드|인기|화제|MZ|2026/,
     /선물|이벤트|할인|세일|혜택/,
   ];
+  const headlineFriendly = [
+    /발표|전망|이유|현황|대응|영향|분석|이슈|오늘|주요|뉴스|정부|시장|개선|도입|확대|변화|대책|전략|결과|이후|관련|위해|가능|우려|전망|성장|감소|증가|조사|발생|제공|선택|이용|사용|지원|추가|개선|강화|개발|도입|시대|이상|이하|위한|통해|따른|대한|있는|하는|될|된|있다|된다/,
+  ];
 
   const isBlogFriendly = blogFriendly.some((p) => p.test(newsTitle));
-  if (!isBlogFriendly) return null;
+  const isHeadlineFriendly = headlineRelaxed && headlineFriendly.some((p) => p.test(newsTitle));
+  if (!isBlogFriendly && !isHeadlineFriendly) return null;
 
   // 카테고리 자동 분류
   let category = '일상';

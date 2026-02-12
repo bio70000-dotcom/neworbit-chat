@@ -14,7 +14,7 @@ const TITLE_PATTERNS = [/\[속보\]/, /\[이슈\]/, /\[이슈포커스\]/, /\[�
 async function getYoutubePopularTopics(maxCount = 5) {
   const apiKey = process.env.YOUTUBE_API_KEY;
   if (!apiKey) {
-    console.warn('[YoutubeTrends] YOUTUBE_API_KEY가 없습니다');
+    console.warn('[YoutubeTrends] YOUTUBE_API_KEY가 없습니다. GitHub Secrets 또는 서버 환경변수에 설정했는지 확인하세요.');
     return [];
   }
 
@@ -25,12 +25,23 @@ async function getYoutubePopularTopics(maxCount = 5) {
     const url = `${YOUTUBE_API_BASE}/videos?part=snippet&chart=mostPopular&regionCode=KR&maxResults=50&key=${apiKey}`;
     const res = await fetch(url, { signal: controller.signal });
     clearTimeout(timeout);
+    const body = await res.text();
     if (!res.ok) {
-      const err = await res.text();
-      throw new Error(`YouTube API ${res.status}: ${err.slice(0, 200)}`);
+      console.warn('[YoutubeTrends] API 응답 오류:', res.status, body.slice(0, 300));
+      throw new Error(`YouTube API ${res.status}: ${body.slice(0, 200)}`);
     }
-    const data = await res.json();
+    let data;
+    try {
+      data = JSON.parse(body);
+    } catch (e) {
+      console.warn('[YoutubeTrends] JSON 파싱 실패:', body.slice(0, 200));
+      return [];
+    }
     const items = data?.items || [];
+    if (items.length === 0) {
+      console.warn('[YoutubeTrends] API가 영상 0건 반환. quota 또는 regionCode 확인.');
+      return [];
+    }
 
     const newsOrIssue = [];
     const rest = [];
@@ -54,7 +65,7 @@ async function getYoutubePopularTopics(maxCount = 5) {
     return result;
   } catch (e) {
     clearTimeout(timeout);
-    console.warn('[YoutubeTrends] 수집 실패:', e.message);
+    console.warn('[YoutubeTrends] 수집 실패:', e.message, e.code || '');
     return [];
   }
 }
