@@ -4,10 +4,9 @@
  * 매일 09:00 KST:
  *  1. 6편 주제 선정 → 텔레그램 보고
  *  2. 1차 주제 승인/거부/재선정 대기
- *  3. 승인 후 6편 초안 생성(Gemini) → 주제·소제목(h2) 텔레그램 보고
- *  4. 1~6번 순차 사진 수집 (글당 최대 3장, 사용자 메시지 올 때까지 대기)
- *  5. 발행 스케줄 보고 → 11:00~22:00 KST 랜덤 시간에 6편 발행
- *  6. 23시 포스팅 결과 보고 (성공/실패)
+ *  3. 승인 후 1~6번 순차: N번 초안 생성(Gemini) → N번 소제목 전달 + N번 사진 수집 (1번 사진 접수 완료 후 2번 초안 생성 … 방식)
+ *  4. 발행 스케줄 보고 → 11:00~22:00 KST 랜덤 시간에 6편 발행
+ *  5. 23시 포스팅 결과 보고 (성공/실패)
  */
 
 require('dotenv').config();
@@ -472,38 +471,13 @@ async function dailyCycle(opts = {}) {
       }
     }
 
-    // 4. 초안 생성 (1번씩 순차 진행, 편마다 완료 알림 + 대기로 API 부하·타임아웃 완화)
-    const DRAFT_GAP_MS = 12 * 1000; // 편 사이 12초 대기
+    // 4. 1~6번 순서: N번 초안 생성 → N번 소제목 전달 + 사진 수집 (1번 사진 접수 완료 후 2번 초안 생성 … 방식으로 API 부하·타임아웃 완화)
     await initAgent();
-    let idx = 0;
-    for (const entry of plan) {
-      for (const topic of entry.topics) {
-        idx++;
-        if (idx > 1) await new Promise((r) => setTimeout(r, DRAFT_GAP_MS));
-        console.log(`[Scheduler] ${idx}/6 초안 생성: "${topic.keyword}"`);
-        try {
-          topic.draft = await generateDraftOnly(topic);
-          const h2s = topic.draft && topic.draft.body ? extractKeywordsFromHtml(topic.draft.body) : [];
-          const subLine = h2s.length > 0 ? `\n   소제목: ${h2s.join(', ')}` : '\n   소제목: (없음)';
-          await sendMessage(`✅ ${idx}번 초안 완료: ${topic.keyword.slice(0, 40)}${topic.keyword.length > 40 ? '…' : ''}${subLine}`);
-        } catch (e) {
-          console.error(`[Scheduler] 초안 생성 실패 (${topic.keyword}): ${e.message}`);
-          if (e.stack) console.error(`[Scheduler] stack: ${e.stack}`);
-          await sendMessage(`❌ ${idx}번 초안 생성 실패: ${topic.keyword} - ${e.message}`);
-          await cleanupAgent();
-          schedulerState = 'idle';
-          currentSchedule = null;
-          return;
-        }
-      }
-    }
-
-    // 5. 1~6번 고정 순서로 진행: N번 소제목 보고 → N번 사진 수집 (plan 순서 유지, 번호 뒤섞임 방지)
     const orderedItems = [];
     let num = 1;
     for (const entry of plan) {
       for (const topic of entry.topics) {
-        orderedItems.push({ index: num, keyword: topic.keyword, topic, subheadings: topic.draft && topic.draft.body ? extractKeywordsFromHtml(topic.draft.body) : [] });
+        orderedItems.push({ index: num, keyword: topic.keyword, topic, subheadings: [] });
         num++;
       }
     }
@@ -512,6 +486,19 @@ async function dailyCycle(opts = {}) {
     const allPhotos = [];
     for (const item of orderedItems) {
       const n = item.index;
+      console.log(`[Scheduler] ${n}/6 초안 생성: "${item.topic.keyword}"`);
+      try {
+        item.topic.draft = await generateDraftOnly(item.topic);
+        item.subheadings = item.topic.draft && item.topic.draft.body ? extractKeywordsFromHtml(item.topic.draft.body) : [];
+      } catch (e) {
+        console.error(`[Scheduler] 초안 생성 실패 (${item.topic.keyword}): ${e.message}`);
+        if (e.stack) console.error(`[Scheduler] stack: ${e.stack}`);
+        await sendMessage(`❌ ${n}번 초안 생성 실패: ${item.topic.keyword} - ${e.message}`);
+        await cleanupAgent();
+        schedulerState = 'idle';
+        currentSchedule = null;
+        return;
+      }
       const h2Text = item.subheadings.length > 0 ? item.subheadings.join(', ') : '(소제목 없음)';
       await sendMessage(`📝 <b>${n}번</b> [${item.keyword}]\n   소제목: ${h2Text}\n\n위 주제에 맞는 이미지를 보내주세요 (최대 3장). 다음 번호로 가려면 <b>다음</b> 또는 <b>스킵</b> 입력`);
       const slotPhotos = await waitForPhotosForSlot(n, item.keyword, 3);

@@ -45,7 +45,7 @@ async function callGeminiWithModel(prompt, maxTokens, temperature, model) {
   const url = `${GEMINI_BASE_URL}/models/${model}:generateContent?key=${apiKey}`;
 
   const controller = new AbortController();
-  const timeoutMs = 60000;
+  const timeoutMs = 180000; // 3분 (1500~2600 words 초안 생성 완료까지 방지)
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
@@ -82,18 +82,27 @@ async function callGeminiWithModel(prompt, maxTokens, temperature, model) {
   }
 }
 
-/** primary 모델 실패 시 fallback 모델로 재시도 */
+/** primary 실패 시 fallback 재시도. 타임아웃/중단 시 1회 재시도로 완전 방지 */
 async function callGemini(prompt, maxTokens = 2048, temperature = 0.8) {
-  try {
-    return await callGeminiWithModel(prompt, maxTokens, temperature, MODEL);
-  } catch (e) {
-    const isModelError = /404|400|503/.test(String(e.message)) || e.message.includes('not found');
-    if (isModelError && MODEL !== FALLBACK_MODEL) {
-      console.warn(`[DraftWriter] ${MODEL} 실패, ${FALLBACK_MODEL}로 재시도: ${e.message}`);
-      return await callGeminiWithModel(prompt, maxTokens, temperature, FALLBACK_MODEL);
+  const tryModel = async (model, isRetry = false) => {
+    try {
+      return await callGeminiWithModel(prompt, maxTokens, temperature, model);
+    } catch (e) {
+      const isTimeout = e.message && (e.message.includes('timeout') || e.message.includes('aborted'));
+      const isModelError = /404|400|503/.test(String(e.message)) || e.message.includes('not found');
+      if (isRetry) throw e;
+      if (isTimeout) {
+        console.warn(`[DraftWriter] 타임아웃/중단, 1회 재시도 (${model}): ${e.message}`);
+        return await tryModel(model, true);
+      }
+      if (isModelError && model === MODEL && MODEL !== FALLBACK_MODEL) {
+        console.warn(`[DraftWriter] ${MODEL} 실패, ${FALLBACK_MODEL}로 재시도: ${e.message}`);
+        return await tryModel(FALLBACK_MODEL, false);
+      }
+      throw e;
     }
-    throw e;
-  }
+  };
+  return await tryModel(MODEL);
 }
 
 // ── 초안 생성 ──────────────────────────────────────
