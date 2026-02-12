@@ -628,7 +628,7 @@ async function main() {
     process.exit(1);
   }
 
-  await sendMessage('🟢 Blog Scheduler가 시작되었습니다.\n텔레그램에서 <b>시작</b> 또는 <b>주제 선정</b> 입력 시 즉시 주제 선정을 시작합니다.\n<b>주제 테스트</b> 입력 시 풀(20개)과 최종 작가별 선정만 보고합니다.');
+  await sendMessage('🟢 Blog Scheduler가 시작되었습니다.\n텔레그램에서 <b>시작</b> 또는 <b>주제 선정</b> 입력 시 즉시 주제 선정을 시작합니다.\n<b>주제 테스트</b> 입력 시 풀(~25개)과 최종 작가별 선정만 보고합니다.');
 
   // --test-5min: 즉시 주제 선정 → 텔레그램 보고 → 승인 후 5분 간격 6편 발행 (로그는 DEBUG_LOG_PATH에)
   if (process.argv.includes('--test-5min')) {
