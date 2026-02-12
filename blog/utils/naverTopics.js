@@ -98,14 +98,14 @@ async function getNaverNewsTopics(writer) {
     return [];
   }
 
-  // 헤드라인 위주 시드 우선 사용 (당일 주요 뉴스)
+  // 헤드라인 위주 시드 (당일 주요 뉴스) + 작가 시드로 5~7개 쿼리해 수집량 확보
   const headlineSeeds = [...HEADLINE_SEEDS];
   const writerSeeds = buildSeedsFromWriter(writer);
   const seeds = [];
   const shuffled = [...headlineSeeds].sort(() => Math.random() - 0.5);
-  for (let i = 0; i < 4 && i < shuffled.length; i++) seeds.push(shuffled[i]);
+  for (let i = 0; i < 5 && i < shuffled.length; i++) seeds.push(shuffled[i]);
   const shuffledWriter = [...writerSeeds].sort(() => Math.random() - 0.5);
-  if (shuffledWriter.length) seeds.push(shuffledWriter[0]);
+  for (let i = 0; i < 2 && i < shuffledWriter.length; i++) seeds.push(shuffledWriter[i]);
 
   const allTopics = [];
 
@@ -218,10 +218,12 @@ function extractBlogTopic(newsTitle, searchSeed, headlineRelaxed = false) {
   const headlineFriendly = [
     /발표|전망|이유|현황|대응|영향|분석|이슈|오늘|주요|뉴스|정부|시장|개선|도입|확대|변화|대책|전략|결과|이후|관련|위해|가능|우려|전망|성장|감소|증가|조사|발생|제공|선택|이용|사용|지원|추가|개선|강화|개발|도입|시대|이상|이하|위한|통해|따른|대한|있는|하는|될|된|있다|된다/,
   ];
+  const hasHangul = /[\uAC00-\uD7A3]{2,}/.test(newsTitle);
 
   const isBlogFriendly = blogFriendly.some((p) => p.test(newsTitle));
   const isHeadlineFriendly = headlineRelaxed && headlineFriendly.some((p) => p.test(newsTitle));
-  if (!isBlogFriendly && !isHeadlineFriendly) return null;
+  const isMinimalOk = headlineRelaxed && hasHangul && newsTitle.length >= 8; // 한글 2자 이상 + 길이면 통과 (수집량 확보)
+  if (!isBlogFriendly && !isHeadlineFriendly && !isMinimalOk) return null;
 
   // 카테고리 자동 분류
   let category = '일상';

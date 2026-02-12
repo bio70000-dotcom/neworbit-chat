@@ -1,14 +1,13 @@
 /**
  * YouTube Data API v3 기반 한국 인기 뉴스/이슈 키워드 수집
- * mostPopular (regionCode=KR) 후 뉴스 카테고리 또는 제목 [속보]/[이슈] 등 필터해 5개 반환
+ * videoCategoryId=25 (News & Politics) 로 '뉴스 속보', '사회적 이슈', '논란' 영상만 조회
  */
 
 const YOUTUBE_API_BASE = 'https://www.googleapis.com/youtube/v3';
-const NEWS_CATEGORY_ID = '25';
-const TITLE_PATTERNS = [/\[속보\]/, /\[이슈\]/, /\[이슈포커스\]/, /\[뉴스\]/, /\[단독\]/];
+const NEWS_CATEGORY_ID = '25'; // News & Politics
 
 /**
- * 한국 인기 영상 중 뉴스/이슈 성격 5개 키워드(제목) 수집
+ * 한국 인기 영상 중 뉴스/정치 카테고리만 5개 키워드(제목) 수집
  * @returns {Promise<Array<{keyword: string, category: string, source: string}>>}
  */
 async function getYoutubePopularTopics(maxCount = 5) {
@@ -22,7 +21,7 @@ async function getYoutubePopularTopics(maxCount = 5) {
   const timeout = setTimeout(() => controller.abort(), 15000);
 
   try {
-    const url = `${YOUTUBE_API_BASE}/videos?part=snippet&chart=mostPopular&regionCode=KR&maxResults=50&key=${apiKey}`;
+    const url = `${YOUTUBE_API_BASE}/videos?part=snippet&chart=mostPopular&regionCode=KR&videoCategoryId=${NEWS_CATEGORY_ID}&maxResults=${Math.max(maxCount, 15)}&key=${apiKey}`;
     const res = await fetch(url, { signal: controller.signal });
     clearTimeout(timeout);
     const body = await res.text();
@@ -39,29 +38,20 @@ async function getYoutubePopularTopics(maxCount = 5) {
     }
     const items = data?.items || [];
     if (items.length === 0) {
-      console.warn('[YoutubeTrends] API가 영상 0건 반환. quota 또는 regionCode 확인.');
+      console.warn('[YoutubeTrends] API가 영상 0건 반환. videoCategoryId=25(뉴스/정치) quota 또는 regionCode 확인.');
       return [];
     }
 
-    const newsOrIssue = [];
-    const rest = [];
-    for (const item of items) {
-      const title = item?.snippet?.title || '';
-      const categoryId = item?.snippet?.categoryId || '';
-      const cleanTitle = title.trim().replace(/\s+/g, ' ');
-      if (!cleanTitle || cleanTitle.length < 2) continue;
+    const result = items
+      .map((item) => {
+        const title = item?.snippet?.title || '';
+        const cleanTitle = title.trim().replace(/\s+/g, ' ');
+        return cleanTitle.length >= 2 ? { keyword: cleanTitle, category: 'trending', source: 'youtube_popular' } : null;
+      })
+      .filter(Boolean)
+      .slice(0, maxCount);
 
-      const isNewsCategory = categoryId === NEWS_CATEGORY_ID;
-      const hasIssuePattern = TITLE_PATTERNS.some((p) => p.test(title));
-      if (isNewsCategory || hasIssuePattern) {
-        newsOrIssue.push({ keyword: cleanTitle, category: 'trending', source: 'youtube_popular' });
-      } else {
-        rest.push({ keyword: cleanTitle, category: 'trending', source: 'youtube_popular' });
-      }
-    }
-
-    const result = [...newsOrIssue, ...rest].slice(0, maxCount);
-    console.log(`[YoutubeTrends] 인기 영상 ${items.length}개 중 뉴스/이슈 ${newsOrIssue.length}개, 총 ${result.length}개 반환`);
+    console.log(`[YoutubeTrends] 뉴스/정치 카테고리 인기 영상 ${items.length}개 → ${result.length}개 반환`);
     return result;
   } catch (e) {
     clearTimeout(timeout);
