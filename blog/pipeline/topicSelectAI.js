@@ -56,7 +56,7 @@ async function selectTopicsWithAI(candidatesPool, writers) {
     )
     .join('\n');
 
-  const bySource = { seasonal: [], naver_news: [], youtube_popular: [], signal_bz: [] };
+  const bySource = { seasonal: [], naver_news: [], google_trends_rss: [], youtube_popular: [], signal_bz: [] };
   for (const c of candidatesPool) {
     const list = bySource[c.source] || [];
     list.push(c);
@@ -80,12 +80,14 @@ async function selectTopicsWithAI(candidatesPool, writers) {
   const candidatesText = [
     '## 시즌(seasonal) 후보',
     (bySource.seasonal || []).map(formatCandidate).join('\n') || '(없음)',
-    '## 네이버 뉴스(naver_news) 후보',
+    '## 네이버 뉴스(naver_news) 후보 — 작가별 맞춤 쿼리(여행/전시/힐링, AI/테크 등)로 수집한 주제. 달산책·텍스트리에게 우선 배정 권장.',
     (bySource.naver_news || []).map(formatCandidate).join('\n') || '(없음)',
-    '## 유튜브 인기(youtube_popular) 후보',
-    (bySource.youtube_popular || []).map(formatCandidate).join('\n') || '(없음)',
-    '## 시그널 실시간(signal_bz) 후보',
-    (bySource.signal_bz || []).map(formatCandidate).join('\n') || '(없음)',
+    '## 구글 트렌드(google_trends_rss) + 유튜브 뉴스(youtube_popular) + 시그널(signal_bz) 후보 — 실시간 트렌드/이슈. 주로 bbittul, 필요 시 textree에 적합. 달산책(감성·힐링)에는 사건/사고·정치성 주제 배정 금지.',
+    [
+      (bySource.google_trends_rss || []).map(formatCandidate).join('\n'),
+      (bySource.youtube_popular || []).map(formatCandidate).join('\n'),
+      (bySource.signal_bz || []).map(formatCandidate).join('\n'),
+    ].filter(Boolean).join('\n') || '(없음)',
   ].join('\n');
 
   const prompt = `너는 블로그 편집장이다. 아래 작가 3명이 각각 오늘 2편씩 총 6편을 쓴다. 전체 후보 풀에서 정확히 6개를 골라야 한다.
@@ -97,16 +99,18 @@ ${writersDesc}
 ${candidatesText}
 
 ## 규칙
-1. 전체 후보 풀에서 각 작가의 전문분야(categories)·관심사(bio)에 가장 잘 맞는 키워드를 추론해, 작가당 정확히 2개씩 총 6개를 선택한다.
-2. 소스별 개수는 고정하지 않는다(시즌 2개, 네이버 2개 등 필수 아님). 작가 적합성만 맞으면 어떤 소스에서든 선택 가능.
-3. 같은 키워드는 한 번만 선택. 6개 모두 서로 다른 키워드여야 함.
-4. 검색량이 높은 주제를 참고하되, 작가와 주제의 적합성을 최우선으로 하라.
-5. 각 선택에 대해 "선정 이유"를 한 줄로 한국어로 써줘.
+1. **작가의 categories와 bio에 가장 적합한 주제를 우선** 선택한다. 소스별 개수는 고정하지 않는다.
+2. **dalsanchek(달산책)**: 라이프스타일·감성·힐링·여행·에세이 전문. **실시간 트렌드 중 사건/사고·정치·자극 이슈는 절대 배정하지 말 것.** 네이버 뉴스(naver_news) 그룹의 여행/전시/힐링/주말 나들이 성격 주제를 우선 배정.
+3. **textree(텍스트리)**: IT·테크·경제·생산성·AI 전문. 트렌드·테크 주제 적합.
+4. **bbittul(삐뚤빼뚤)**: 트렌드·엔터·맛집·이슈·밈 전문. 구글 트렌드/유튜브/시그널 등 실시간 이슈 배정 적합.
+5. 같은 키워드는 한 번만 선택. 6개 모두 서로 다른 키워드.
+6. 각 선택에 대해 "선정 이유"를 한 줄로 한국어로 써줘.
 
 ## 응답 형식 (JSON만, 다른 텍스트 없이)
+source는 후보 풀에 표시된 값 그대로: seasonal | naver_news | google_trends_rss | youtube_popular | signal_bz
 {
   "selections": [
-    { "writerId": "dalsanchek", "keyword": "후보에 나온 키워드 그대로", "source": "seasonal", "rationale": "한 줄 선정 이유" },
+    { "writerId": "dalsanchek", "keyword": "후보에 나온 키워드 그대로", "source": "naver_news", "rationale": "한 줄 선정 이유" },
     ...총 6개
   ]
 }`;

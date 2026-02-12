@@ -9,6 +9,13 @@ const NAVER_NEWS_URL = 'https://openapi.naver.com/v1/search/news.json';
 // 헤드라인 위주 공통 시드 (당일 주요 뉴스 수집)
 const HEADLINE_SEEDS = ['오늘 뉴스', '주요 뉴스', '이슈', '헤드라인', '오늘의 뉴스'];
 
+/** 작가별 고정 쿼리 (Pool B: 타겟 구명조끼용). A그룹 실시간 트렌드에서 소외되는 dalsanchek/textree용 */
+const WRITER_NAVER_QUERIES = {
+  dalsanchek: ['여행', '전시회', '주말 나들이', '힐링 에세이'],
+  textree: ['AI 기술', '애플', '삼성전자', '신제품 출시'],
+  bbittul: ['팝업스토어'], // A그룹에서 충분하므로 0~1개만
+};
+
 // 언론사 화이트리스트 (originallink 호스트). 제거할 매체는 이 목록에서 삭제하면 됨.
 let PUBLISHER_DOMAINS = [];
 try {
@@ -241,4 +248,55 @@ function extractBlogTopic(newsTitle, searchSeed, headlineRelaxed = false) {
   };
 }
 
-module.exports = { getNaverNewsTopics };
+/**
+ * 작가별 고정 쿼리로 네이버 뉴스 검색 → Pool B용 후보 수집 (dalsanchek/textree 맞춤)
+ * @param {Object} writer - { id } 포함 작가 객체
+ * @param {number} maxPerWriter - 해당 작가당 최대 개수 (dalsanchek 3~4, textree 3~4, bbittul 0~1)
+ * @returns {Promise<Array<{keyword: string, category: string, source: string}>>}
+ */
+async function getNaverTopicsByWriterQueries(writer, maxPerWriter = 4) {
+  const clientId = process.env.NAVER_CLIENT_ID;
+  const clientSecret = process.env.NAVER_CLIENT_SECRET;
+  if (!clientId || !clientSecret) return [];
+
+  const queries = WRITER_NAVER_QUERIES[writer?.id];
+  if (!Array.isArray(queries) || queries.length === 0) return [];
+
+  const allTopics = [];
+  for (const query of queries) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    try {
+      const url = `${NAVER_NEWS_URL}?query=${encodeURIComponent(query)}&display=10&sort=date`;
+      const res = await fetch(url, {
+        headers: { 'X-Naver-Client-Id': clientId, 'X-Naver-Client-Secret': clientSecret },
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+      if (!res.ok) continue;
+      const data = await res.json();
+      const items = data?.items || [];
+      for (const item of items) {
+        if (PUBLISHER_DOMAINS.length > 0 && !isAllowedPublisher(item.originallink)) continue;
+        const title = stripHtml(item.title);
+        const topic = extractBlogTopic(title, query, true);
+        if (topic) allTopics.push(topic);
+      }
+    } catch (e) {
+      clearTimeout(timeout);
+    }
+  }
+
+  const seen = new Set();
+  const unique = [];
+  for (const t of allTopics) {
+    if (!seen.has(t.keyword)) { seen.add(t.keyword); unique.push(t); }
+  }
+  const result = unique.slice(0, maxPerWriter);
+  if (result.length > 0) {
+    console.log(`[NaverTopics] 작가별 쿼리 ${writer?.id} ${queries.join(',')} → ${result.length}개`);
+  }
+  return result;
+}
+
+module.exports = { getNaverNewsTopics, getNaverTopicsByWriterQueries };

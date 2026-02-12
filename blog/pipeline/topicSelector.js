@@ -6,8 +6,9 @@
  */
 
 const calendar = require('../calendar.json');
+const { getGoogleTrendsDailyKR } = require('../utils/googleTrendsRss');
 const { getYoutubePopularTopics } = require('../utils/youtubeTrends');
-const { getNaverNewsTopics } = require('../utils/naverTopics');
+const { getNaverNewsTopics, getNaverTopicsByWriterQueries } = require('../utils/naverTopics');
 const { getSignalTopics } = require('../utils/signalBz');
 const { isDuplicate } = require('../utils/dedup');
 const { getNaverBlogSearchTotal, getSearchVolumeLabel } = require('../utils/searchVolume');
@@ -278,72 +279,64 @@ async function getTopicFromSource(writer, source, excludeKeywords = new Set()) {
   return topic;
 }
 
-/** AI 선정용 후보 풀: 소스당 5개 × 4 = 20개 (writerId 없음, 전체 풀에서 AI가 작가별 추론 할당) */
+/** AI 선정용 후보 풀: A(광역 트렌드 8~10) + B(작가별 네이버 쿼리 6~8) + C(시즌 2) ≈ 20개 */
 async function getCandidatesPool(writers, postsPerWriter = 2) {
   const pool = [];
   const usedGlobal = new Set();
-  const perSource = 5;
 
-  // 시즌 5
-  const seasonalList = getSeasonalTopicsForPool(perSource);
+  const addToPool = async (topic, sourceLabel) => {
+    if (usedGlobal.has(topic.keyword)) return false;
+    const dup = await isDuplicate(topic.keyword);
+    if (dup) return false;
+    pool.push({
+      keyword: topic.keyword,
+      category: topic.category || 'trending',
+      source: topic.source || sourceLabel,
+    });
+    usedGlobal.add(topic.keyword);
+    return true;
+  };
+
+  // C. 시즌 (약 2개)
+  const seasonalList = getSeasonalTopicsForPool(2);
   for (const t of seasonalList) {
-    if (usedGlobal.has(t.keyword)) continue;
-    const dup = await isDuplicate(t.keyword);
-    if (!dup) {
-      pool.push({ keyword: t.keyword, category: t.category, source: 'seasonal' });
-      usedGlobal.add(t.keyword);
-    }
+    await addToPool(t, 'seasonal');
   }
 
-  // 네이버 5 (작가 무관, 첫 번째 작가로 헤드라인 수집 후 5개)
+  // A. 광역 어그로: 구글 트렌드 KR 5 + 유튜브 뉴스/정치 4 + 시그널 3 (총 8~10개 목표)
   try {
-    const naverAll = await getNaverNewsTopics(writers[0]);
-    let n = 0;
-    for (const t of naverAll) {
-      if (n >= perSource) break;
-      if (usedGlobal.has(t.keyword)) continue;
-      const dup = await isDuplicate(t.keyword);
-      if (!dup) {
-        pool.push({ keyword: t.keyword, category: t.category, source: 'naver_news' });
-        usedGlobal.add(t.keyword);
-        n++;
-      }
-    }
+    const googleList = await getGoogleTrendsDailyKR(5);
+    for (const t of googleList) await addToPool(t, 'google_trends_rss');
   } catch (e) {
-    console.warn('[TopicSelector] 네이버 풀 수집 실패:', e.message);
+    console.warn('[TopicSelector] 구글 트렌드 풀 수집 실패:', e.message);
   }
-
-  // 유튜브 5
   try {
-    const youtubeList = await getYoutubePopularTopics(perSource);
-    for (const t of youtubeList) {
-      if (usedGlobal.has(t.keyword)) continue;
-      const dup = await isDuplicate(t.keyword);
-      if (!dup) {
-        pool.push({ keyword: t.keyword, category: t.category || 'trending', source: 'youtube_popular' });
-        usedGlobal.add(t.keyword);
-      }
-    }
+    const youtubeList = await getYoutubePopularTopics(4);
+    for (const t of youtubeList) await addToPool(t, 'youtube_popular');
   } catch (e) {
     console.warn('[TopicSelector] 유튜브 풀 수집 실패:', e.message);
   }
-
-  // 시그널 5
   try {
-    const signalList = await getSignalTopics(perSource);
-    for (const t of signalList) {
-      if (usedGlobal.has(t.keyword)) continue;
-      const dup = await isDuplicate(t.keyword);
-      if (!dup) {
-        pool.push({ keyword: t.keyword, category: t.category || 'trending', source: 'signal_bz' });
-        usedGlobal.add(t.keyword);
-      }
-    }
+    const signalList = await getSignalTopics(3);
+    for (const t of signalList) await addToPool(t, 'signal_bz');
   } catch (e) {
     console.warn('[TopicSelector] 시그널 풀 수집 실패:', e.message);
   }
 
-  console.log(`[TopicSelector] 후보 풀: ${pool.length}개 (시즌/네이버/유튜브/시그널)`);
+  // B. 타겟 구명조끼: 작가별 고정 쿼리 네이버 뉴스 (dalsanchek 3~4, textree 3~4, bbittul 0)
+  const naverMaxPerWriter = { dalsanchek: 4, textree: 4, bbittul: 0 };
+  for (const writer of writers) {
+    const maxPer = naverMaxPerWriter[writer?.id] ?? 0;
+    if (maxPer <= 0) continue;
+    try {
+      const list = await getNaverTopicsByWriterQueries(writer, maxPer);
+      for (const t of list) await addToPool(t, 'naver_news');
+    } catch (e) {
+      console.warn('[TopicSelector] 네이버 작가별 풀 수집 실패:', writer?.id, e.message);
+    }
+  }
+
+  console.log(`[TopicSelector] 후보 풀: ${pool.length}개 (A:트렌드 + B:작가별네이버 + C:시즌)`);
   return pool;
 }
 
