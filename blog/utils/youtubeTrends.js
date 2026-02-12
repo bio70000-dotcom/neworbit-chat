@@ -6,8 +6,19 @@
 const YOUTUBE_API_BASE = 'https://www.googleapis.com/youtube/v3';
 const NEWS_CATEGORY_ID = '25'; // News & Politics
 
+/** ISO 8601 duration (PT1M30S 등) → 초 단위. 60초 이하는 쇼츠로 간주해 제외 */
+function parseDurationSeconds(duration) {
+  if (!duration || typeof duration !== 'string') return 9999;
+  const match = duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/i);
+  if (!match) return 9999;
+  const h = parseInt(match[1] || '0', 10);
+  const m = parseInt(match[2] || '0', 10);
+  const s = parseInt(match[3] || '0', 10);
+  return h * 3600 + m * 60 + s;
+}
+
 /**
- * 한국 인기 영상 중 뉴스/정치 카테고리만 5개 키워드(제목) 수집
+ * 한국 인기 영상 중 뉴스/정치 카테고리만 수집 (쇼츠 제외: 제목 #Shorts 또는 재생시간 60초 이하)
  * @returns {Promise<Array<{keyword: string, category: string, source: string}>>}
  */
 async function getYoutubePopularTopics(maxCount = 5) {
@@ -21,7 +32,7 @@ async function getYoutubePopularTopics(maxCount = 5) {
   const timeout = setTimeout(() => controller.abort(), 15000);
 
   try {
-    const url = `${YOUTUBE_API_BASE}/videos?part=snippet&chart=mostPopular&regionCode=KR&videoCategoryId=${NEWS_CATEGORY_ID}&maxResults=${Math.max(maxCount, 15)}&key=${apiKey}`;
+    const url = `${YOUTUBE_API_BASE}/videos?part=snippet,contentDetails&chart=mostPopular&regionCode=KR&videoCategoryId=${NEWS_CATEGORY_ID}&maxResults=${Math.max(maxCount, 25)}&key=${apiKey}`;
     const res = await fetch(url, { signal: controller.signal });
     clearTimeout(timeout);
     const body = await res.text();
@@ -42,7 +53,15 @@ async function getYoutubePopularTopics(maxCount = 5) {
       return [];
     }
 
-    const result = items
+    const filtered = items.filter((item) => {
+      const title = (item?.snippet?.title || '').trim();
+      if (/#shorts/i.test(title)) return false;
+      const duration = item?.contentDetails?.duration;
+      if (duration && parseDurationSeconds(duration) <= 60) return false;
+      return true;
+    });
+
+    const result = filtered
       .map((item) => {
         const title = item?.snippet?.title || '';
         const cleanTitle = title.trim().replace(/\s+/g, ' ');
@@ -51,7 +70,7 @@ async function getYoutubePopularTopics(maxCount = 5) {
       .filter(Boolean)
       .slice(0, maxCount);
 
-    console.log(`[YoutubeTrends] 뉴스/정치 카테고리 인기 영상 ${items.length}개 → ${result.length}개 반환`);
+    console.log(`[YoutubeTrends] 뉴스/정치 인기 영상 ${items.length}개 중 쇼츠 제외 후 ${filtered.length}개 → ${result.length}개 반환`);
     return result;
   } catch (e) {
     clearTimeout(timeout);
