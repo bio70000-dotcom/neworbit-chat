@@ -42,6 +42,34 @@ async function callGemini(prompt, maxTokens = 2048) {
   }
 }
 
+/** JSON에서 selections 블록만 정규식으로 추출 (파싱 실패 시 폴백) */
+function tryRepairSelectionsJson(jsonStr) {
+  const selections = [];
+  const blockRe = /\{\s*"writerId"\s*:\s*"([^"]*)"\s*,\s*"keyword"\s*:\s*"((?:[^"\\]|\\.)*?)"\s*,\s*"source"\s*:\s*"([^"]*)"\s*,\s*"rationale"\s*:\s*"((?:[^"\\]|\\.)*?)"\s*\}/g;
+  let m;
+  while ((m = blockRe.exec(jsonStr)) !== null && selections.length < 6) {
+    selections.push({
+      writerId: (m[1] || '').trim(),
+      keyword: (m[2] || '').replace(/\\"/g, '"').trim(),
+      source: (m[3] || '').trim(),
+      rationale: (m[4] || '').replace(/\\"/g, '"').trim(),
+    });
+  }
+  if (selections.length < 6) {
+    const simpleRe = /\{\s*"writerId"\s*:\s*"([^"]*)"\s*,\s*"keyword"\s*:\s*"([^"]*)"\s*,\s*"source"\s*:\s*"([^"]*)"\s*,\s*"rationale"\s*:\s*"([^"]*)"\s*\}/g;
+    selections.length = 0;
+    while ((m = simpleRe.exec(jsonStr)) !== null && selections.length < 6) {
+      selections.push({
+        writerId: (m[1] || '').trim(),
+        keyword: (m[2] || '').trim(),
+        source: (m[3] || '').trim(),
+        rationale: (m[4] || '').trim(),
+      });
+    }
+  }
+  return selections.length >= 6 ? selections.slice(0, 6) : null;
+}
+
 /** AI가 반환한 키워드와 풀 제목 매칭용 정규화 (공백·말줄임 통일) */
 function normalizeKeywordForMatch(str) {
   if (!str || typeof str !== 'string') return '';
@@ -150,30 +178,73 @@ textree	삼성전자 HBM4 양산	Nate_Trend	테크 이슈
     return { plan: null, error: `API 오류: ${msg.slice(0, 80)}` };
   }
 
-  // TSV 형식 파싱: 한 줄에 writerId\tkeyword\tsource\trationale (6줄)
+  // 정규화: writerId는 소문자 비교, source는 태그 목록과 대소문자 무시 매칭
+  const validWriterIdsLower = new Set(writers.map((w) => (w.id || '').toLowerCase()));
+  const sourceToCanonical = {};
+  SOURCE_TAGS.forEach((tag) => {
+    sourceToCanonical[tag.toLowerCase()] = tag;
+    sourceToCanonical[tag.replace(/_/g, '').toLowerCase()] = tag;
+  });
+  function normalizeWriterId(s) {
+    const t = (s || '').trim().toLowerCase();
+    return validWriterIdsLower.has(t) ? writers.find((w) => (w.id || '').toLowerCase() === t)?.id ?? t : null;
+  }
+  function normalizeSource(s) {
+    const t = (s || '').trim();
+    return sourceToCanonical[t.toLowerCase()] ?? sourceToCanonical[t.replace(/_/g, '').toLowerCase()] ?? null;
+  }
+
+  // 한 줄에서 4칸 추출: 탭 또는 " | " 구분
+  function parseLine(line) {
+    let parts = line.split('\t');
+    if (parts.length < 4) parts = line.split(/\s*\|\s*/);
+    if (parts.length < 4) return null;
+    const writerId = normalizeWriterId(parts[0]);
+    const source = normalizeSource(parts[parts.length - 2]);
+    if (!writerId || !source) return null;
+    const rationale = (parts[parts.length - 1] || '').trim();
+    const keyword = parts.length === 4 ? (parts[1] || '').trim() : parts.slice(1, -2).join(' ').trim();
+    return { writerId, keyword, source, rationale };
+  }
+
   const lines = raw
     .replace(/^```\w*\s*/i, '')
     .replace(/```\s*$/i, '')
     .split(/\r?\n/)
     .map((l) => l.trim())
     .filter(Boolean);
-  const selections = [];
-  const validWriterIds = new Set(writers.map((w) => w.id));
-  const validSources = new Set(SOURCE_TAGS);
+  let selections = [];
   for (const line of lines) {
     if (selections.length >= 6) break;
-    const parts = line.split('\t');
-    if (parts.length < 4) continue;
-    const writerId = (parts[0] || '').trim();
-    const source = (parts[parts.length - 2] || '').trim();
-    const rationale = (parts[parts.length - 1] || '').trim();
-    const keyword = parts.length === 4 ? (parts[1] || '').trim() : parts.slice(1, -2).join('\t').trim();
-    if (!validWriterIds.has(writerId) || !validSources.has(source)) continue;
-    selections.push({ writerId, keyword, source, rationale });
+    const row = parseLine(line);
+    if (row) selections.push(row);
+  }
+
+  // TSV/구분자 파싱으로 6개 안 나오면 JSON 폴백
+  if (selections.length !== 6) {
+    let jsonStr = raw.replace(/^```json?\s*/i, '').replace(/```\s*$/i, '').trim();
+    const firstBrace = jsonStr.indexOf('{');
+    const lastBrace = jsonStr.lastIndexOf('}');
+    if (firstBrace !== -1 && lastBrace > firstBrace) {
+      jsonStr = jsonStr.slice(firstBrace, lastBrace + 1).replace(/\r\n?|\n/g, ' ').replace(/\s+/g, ' ').trim();
+      const repaired = tryRepairSelectionsJson(jsonStr);
+      if (repaired && repaired.length >= 6) {
+        const normalized = repaired.slice(0, 6).map((s) => ({
+          writerId: normalizeWriterId(s.writerId) || (s.writerId || '').trim(),
+          keyword: (s.keyword || '').trim(),
+          source: normalizeSource(s.source) || (s.source || '').trim(),
+          rationale: (s.rationale || '').trim(),
+        })).filter((s) => s.writerId && s.source);
+        if (normalized.length === 6) {
+          selections = normalized;
+          console.warn('[TopicSelectAI] JSON 폴백으로 6개 추출');
+        }
+      }
+    }
   }
   if (selections.length !== 6) {
-    console.warn('[TopicSelectAI] TSV 파싱 결과 6줄 아님:', selections.length, '유효 줄:', lines.length);
-    return { plan: null, error: `AI 응답 형식 오류: 6줄(탭 구분)이 아님. 유효 줄 ${selections.length}개.` };
+    console.warn('[TopicSelectAI] 파싱 결과 6줄 아님:', selections.length, '총 줄:', lines.length);
+    return { plan: null, error: `AI 응답 형식 오류: 6줄이 아님. 유효 줄 ${selections.length}개.` };
   }
 
   const keywordToCandidate = new Map();
