@@ -26,7 +26,7 @@ async function callClaude(systemPrompt, userContent) {
       },
       body: JSON.stringify({
         model: CLAUDE_MODEL,
-        max_tokens: 4000,
+        max_tokens: 8192, // 1500~2600 words 본문 끊김 방지
         system: systemPrompt,
         messages: [{ role: 'user', content: userContent }],
       }),
@@ -78,9 +78,15 @@ async function humanize(draft, writer) {
 
 ## 품질 규칙
 - 원본의 정보량을 줄이지 마. 오히려 더 풍부하게
-- 본문 길이가 원본보다 짧아지면 안 됨
+- 본문 길이가 원본보다 짧아지면 안 됨. **본문 전체를 끝까지 다 써. 중간에 끊지 마.**
 - "~입니다", "~습니다" 절대 금지
 - "첫째, 둘째, 셋째" 나열 패턴 금지
+${persona.name === '삐뚤빼뚤' ? `
+## 삐뚤빼뚤 전용 (필수)
+- 문장 끝은 **반말만**. ~해봐, ~돼, ~앎, ~지, ~임, ~함
+- "~해요", "해보세요", "돼요", "~되세요" 등 해요체/존댓말 **절대 금지**. 한 문장도 해요체로 끝내지 마.
+- 본문·메타설명 톤까지 반말로 통일
+` : ''}
 
 ## 응답 형식
 반드시 JSON만 응답. 다른 텍스트 없이:
@@ -92,9 +98,9 @@ async function humanize(draft, writer) {
 }`;
 
   const bbittulExtra = persona.name === '삐뚤빼뚤'
-    ? ' 삐뚤빼뚤은 반말 캐릭터라서 문장 끝은 전부 반말(~해봐, ~돼, ~앎, ~지)로 써. "해보세요", "~해요" 같은 해요체/존댓말 쓰지 마.'
+    ? ' 문장 끝은 반말만 사용해. 해요체(~요, 해보세요) 한 번도 쓰지 마.'
     : '';
-  const userContent = `아래 블로그 초안을 네 스타일로 완전히 다시 써줘. 정보는 유지하되 말투와 흐름을 인간적으로 바꿔. 반드시 ${persona.name} 말투만 사용. 다른 작가 말투 금지.${bbittulExtra}
+  const userContent = `아래 블로그 초안을 네 스타일로 완전히 다시 써줘. 정보는 유지하되 말투와 흐름을 인간적으로 바꿔. 반드시 ${persona.name} 말투만 사용. 다른 작가 말투 금지. 본문은 원본 길이 유지·끊지 말고 끝까지 써.${bbittulExtra}
 
 ## 원본 초안
 - 제목: ${draft.title}
