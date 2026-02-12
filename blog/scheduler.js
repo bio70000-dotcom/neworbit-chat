@@ -486,7 +486,9 @@ async function dailyCycle(opts = {}) {
         console.log(`[Scheduler] ${idx}/6 초안 생성: "${topic.keyword}"`);
         try {
           topic.draft = await generateDraftOnly(topic);
-          await sendMessage(`✅ ${idx}번 초안 완료: ${topic.keyword.slice(0, 40)}${topic.keyword.length > 40 ? '…' : ''}`);
+          const h2s = topic.draft && topic.draft.body ? extractKeywordsFromHtml(topic.draft.body) : [];
+          const subLine = h2s.length > 0 ? `\n   소제목: ${h2s.join(', ')}` : '\n   소제목: (없음)';
+          await sendMessage(`✅ ${idx}번 초안 완료: ${topic.keyword.slice(0, 40)}${topic.keyword.length > 40 ? '…' : ''}${subLine}`);
         } catch (e) {
           console.error(`[Scheduler] 초안 생성 실패 (${topic.keyword}): ${e.message}`);
           if (e.stack) console.error(`[Scheduler] stack: ${e.stack}`);

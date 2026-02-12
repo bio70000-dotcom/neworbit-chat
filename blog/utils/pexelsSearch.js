@@ -66,14 +66,15 @@ async function searchPexels(query, perPage = 3) {
  * @returns {string[]} 키워드 배열
  */
 function extractKeywordsFromHtml(html) {
-  const h2Regex = /<h2[^>]*>(.*?)<\/h2>/gi;
+  if (!html || typeof html !== 'string') return [];
+  // h2 내용 추출 (줄바꿈·공백 포함 가능하도록 [\s\S] 사용)
+  const h2Regex = /<h2[^>]*>([\s\S]*?)<\/h2>/gi;
   const keywords = [];
   let match;
 
   while ((match = h2Regex.exec(html)) !== null) {
-    // HTML 태그 제거
-    const text = match[1].replace(/<[^>]*>/g, '').trim();
-    if (text && text.length > 2 && text.length < 50) {
+    const text = match[1].replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+    if (text && text.length > 2 && text.length < 80) {
       keywords.push(text);
     }
   }
