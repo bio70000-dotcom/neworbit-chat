@@ -593,10 +593,12 @@ async function runTopicSelectionTest() {
     }
 
     await enrichPoolWithSearchVolume(pool);
-    const plan = await selectTopicsWithAI(pool, WRITERS);
+    const result = await selectTopicsWithAI(pool, WRITERS);
+    const plan = result?.plan;
 
     if (!plan || plan.every((p) => p.topics.length === 0)) {
-      await sendMessage('❌ AI 선정 실패 (후보 부족 또는 API 오류).');
+      const reason = result?.error ? `\n사유: ${result.error}` : '';
+      await sendMessage('❌ AI 선정 실패 (후보 부족 또는 API 오류).' + reason);
       return;
     }
 

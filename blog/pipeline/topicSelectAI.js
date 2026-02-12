@@ -70,7 +70,7 @@ function findBestMatchCandidate(selKeyword, candidatesPool, usedKeywords) {
  * 후보 풀과 작가 정보로 AI가 6편 선정 (2 per writer) + 선정 이유
  * @param {Array} candidatesPool - [{ keyword, source, sourceTag, category }, ...] (전체 풀 ~25개)
  * @param {Array} writers - [{ id, nickname, categories, bio }, ...]
- * @returns {Promise<Array<{writer, topics: [{keyword, source, category?, rationale}]}>>} plan
+ * @returns {Promise<{ plan: Array|null, error?: string }>} plan 성공 시 { plan }, 실패 시 { plan: null, error: '사유' }
  */
 async function selectTopicsWithAI(candidatesPool, writers) {
   const writersDesc = writers
@@ -116,11 +116,11 @@ async function selectTopicsWithAI(candidatesPool, writers) {
 ## 작가
 ${writersDesc}
 
-## 후보 풀 (각 항목 앞 [Source_Tag]는 출처·성격 표시. 반드시 목록에 있는 키워드만 선택)
+## 후보 풀 (각 항목 앞 [Source_Tag]는 출처·성격 표시. 반드시 아래 목록에 **적힌 키워드를 한 글자도 바꾸지 말고 그대로** 선택)
 ${candidatesText}
 
 ## 규칙
-1. **작가의 페르소나(categories, bio)와 가장 적합한 주제를 우선 매칭**한다.
+1. **작가의 페르소나(categories, bio)와 가장 적합한 주제를 우선 매칭**한다. keyword 필드에는 반드시 위 후보 목록에 나온 문자열을 **그대로 복사**한다.
 2. **dalsanchek(달산책)**: 라이프스타일·감성·힐링·여행·에세이 전문. [Naver_Dalsanchek], [Seasonal] 위주로 배정. [Nate_Trend]는 트렌드성이라 필요 시에만.
 3. **textree(텍스트리)**: IT·테크·경제·생산성·AI 전문. [Naver_Textree], [Nate_Trend] 적합.
 4. **bbittul(삐뚤빼뚤)**: 트렌드·엔터·맛집·이슈·밈 전문. [Nate_Trend], [Naver_Bbittul] 위주로 배정.
@@ -136,7 +136,14 @@ source는 위 태그명 그대로: Nate_Trend | Naver_Dalsanchek | Naver_Textree
   ]
 }`;
 
-  const raw = await callGemini(prompt, 2048);
+  let raw;
+  try {
+    raw = await callGemini(prompt, 2048);
+  } catch (e) {
+    const msg = e?.message || String(e);
+    console.warn('[TopicSelectAI] Gemini API 오류:', msg);
+    return { plan: null, error: `API 오류: ${msg.slice(0, 80)}` };
+  }
 
   let jsonStr = raw
     .replace(/^```json?\s*/i, '')
@@ -152,14 +159,14 @@ source는 위 태그명 그대로: Nate_Trend | Naver_Dalsanchek | Naver_Textree
   try {
     data = JSON.parse(jsonStr);
   } catch (e) {
-    console.warn('[TopicSelectAI] JSON 파싱 실패:', e.message);
-    return null;
+    console.warn('[TopicSelectAI] JSON 파싱 실패:', e.message, '응답 앞 200자:', jsonStr.slice(0, 200));
+    return { plan: null, error: `JSON 파싱 실패: ${e.message}` };
   }
 
   const selections = data?.selections;
   if (!Array.isArray(selections) || selections.length !== 6) {
     console.warn('[TopicSelectAI] selections 개수 이상:', selections?.length);
-    return null;
+    return { plan: null, error: `AI가 6개가 아닌 ${selections?.length ?? 0}개 반환` };
   }
 
   const keywordToCandidate = new Map();
@@ -199,12 +206,12 @@ source는 위 태그명 그대로: Nate_Trend | Naver_Dalsanchek | Naver_Textree
 
   const totalTopics = plan.reduce((sum, p) => sum + p.topics.length, 0);
   if (totalTopics !== 6) {
-    console.warn('[TopicSelectAI] 선정 결과 6편 미만:', totalTopics);
-    return null;
+    console.warn('[TopicSelectAI] 선정 결과 6편 미만:', totalTopics, '(키워드 매칭 실패로 일부 스킵됨)');
+    return { plan: null, error: `키워드 매칭 실패: 6개 중 ${totalTopics}개만 매칭됨. AI가 풀에 없는 키워드를 반환했을 수 있음.` };
   }
 
   console.log('[TopicSelectAI] 6편 선정 완료 (AI 추론)');
-  return plan;
+  return { plan };
 }
 
 module.exports = { selectTopicsWithAI };

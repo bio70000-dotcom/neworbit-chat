@@ -320,9 +320,10 @@ async function selectDailyTopicsWithQuota(writers, postsPerWriter = 2) {
     return selectDailyTopicsWithQuotaFallback(writers, postsPerWriter);
   }
   await enrichPoolWithSearchVolume(pool);
-  const plan = await selectTopicsWithAI(pool, writers);
+  const result = await selectTopicsWithAI(pool, writers);
+  const plan = result?.plan;
   if (!plan || plan.every((p) => p.topics.length === 0)) {
-    console.warn('[TopicSelector] AI 선정 실패, fallback');
+    console.warn('[TopicSelector] AI 선정 실패, fallback:', result?.error || '');
     return selectDailyTopicsWithQuotaFallback(writers, postsPerWriter);
   }
   return plan;

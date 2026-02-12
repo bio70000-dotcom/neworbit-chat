@@ -60,7 +60,16 @@ async function getNateTrendTopics(maxCount = 10) {
         continue;
       }
     const buffer = Buffer.from(buf);
-    let raw = buffer.toString('utf-8').trim();
+    let raw = '';
+    try {
+      raw = iconv.decode(buffer, 'euc-kr').trim();
+    } catch (e) {
+      try {
+        raw = iconv.decode(buffer, 'cp949').trim();
+      } catch (e2) {
+        raw = buffer.toString('utf-8').trim();
+      }
+    }
     let list = [];
     const tryParse = (str) => {
       let out = [];
@@ -72,15 +81,8 @@ async function getNateTrendTopics(maxCount = 10) {
     };
     list = tryParse(raw);
     if (list.length === 0 && raw.length > 20) {
-      try {
-        raw = iconv.decode(buffer, 'euc-kr').trim();
-        list = tryParse(raw);
-      } catch (e) {
-        try {
-          raw = iconv.decode(buffer, 'cp949').trim();
-          list = tryParse(raw);
-        } catch (e2) {}
-      }
+      raw = buffer.toString('utf-8').trim();
+      list = tryParse(raw);
     }
     if (raw.length < 10) {
       console.warn('[NateTrends] 응답 본문 너무 짧음:', raw.length);
