@@ -35,7 +35,6 @@ const {
   checkForSchedulerCommand,
   downloadPhoto,
   formatDailyReport,
-  formatSubheadingsReport,
   sendPostResult,
   sendDailySummary,
 } = require('./utils/telegram');
@@ -149,19 +148,22 @@ function generateTestPublishTimes(count, intervalMinutes = 5) {
 
 /**
  * 발행 시간에 작가 배정 (같은 작가 글은 최소 3시간 간격)
+ * planIndex: 주제 보고/사진 수집 시 사용한 1~6 고정 번호. 사진 매칭에 사용.
+ * index: 발행 순서(시간순) 1~6. 메시지 표시용.
  * @param {Array} plan [{writer, topics: [topic1, topic2]}]
  * @param {number[]} times 분 단위 시간 배열
- * @returns {Array} [{time, writer, topic, index}]
+ * @returns {Array} [{time, writer, topic, planIndex, index}]
  */
 function assignTimesToPosts(plan, times) {
   const posts = [];
+  let planIndex = 0;
   for (const entry of plan) {
     for (const topic of entry.topics) {
-      posts.push({ writer: entry.writer, topic });
+      planIndex++;
+      posts.push({ writer: entry.writer, topic, planIndex });
     }
   }
 
-  // 시간 배정 (같은 작가 글은 떨어뜨리기)
   const scheduled = [];
   const usedTimes = new Set();
   const writerLastTime = {};
@@ -172,17 +174,13 @@ function assignTimesToPosts(plan, times) {
 
     for (const t of times) {
       if (usedTimes.has(t)) continue;
-
       const lastT = writerLastTime[post.writer.id];
       const gap = lastT != null ? Math.abs(t - lastT) : Infinity;
-
       if (gap >= SAME_WRITER_GAP_MINUTES && gap > bestGap) {
         bestTime = t;
         bestGap = gap;
       }
     }
-
-    // 간격 못 맞추면 아무 빈 시간
     if (bestTime === null) {
       for (const t of times) {
         if (!usedTimes.has(t)) {
@@ -191,7 +189,6 @@ function assignTimesToPosts(plan, times) {
         }
       }
     }
-
     if (bestTime !== null) {
       usedTimes.add(bestTime);
       writerLastTime[post.writer.id] = bestTime;
@@ -199,12 +196,12 @@ function assignTimesToPosts(plan, times) {
         time: bestTime,
         writer: post.writer,
         topic: post.topic,
-        index: scheduled.length + 1,
+        planIndex: post.planIndex,
+        index: 0,
       });
     }
   }
 
-  // 시간순 정렬 후, 표시/실행 순서와 맞추기 위해 index를 1~6으로 재부여
   const sorted = scheduled.sort((a, b) => a.time - b.time);
   sorted.forEach((item, i) => {
     item.index = i + 1;
@@ -288,9 +285,9 @@ async function executeSchedule(schedule, userPhotos) {
       await sendMessage(`⏩ ${item.index}번 "${item.topic.keyword}" → 예정 시각이 지나 즉시 발행합니다.`);
     }
 
-    // 이 글에 배정된 사용자 이미지 수집 (시간순 1~6번 = item.index와 일치)
+    // 이 글에 배정된 사용자 이미지 수집 (plan 순서 1~6 = planIndex로 매칭)
     const assignedPhotos = userPhotos.filter(
-      (p) => p.postNumber === item.index || (!p.postNumber && !p.used)
+      (p) => p.postNumber === item.planIndex || (!p.postNumber && !p.used)
     );
     const userImageBuffers = [];
     const seenFileIds = new Set(); // 같은 사진 중복 전송 시 한 번만 사용
@@ -501,34 +498,36 @@ async function dailyCycle(opts = {}) {
       }
     }
 
-    // 스케줄을 먼저 정해서 소제목/사진 번호와 발행 순서를 통일 (1번 = 같은 글)
+    // 5. 1~6번 고정 순서로 진행: N번 소제목 보고 → N번 사진 수집 (plan 순서 유지, 번호 뒤섞임 방지)
+    const orderedItems = [];
+    let num = 1;
+    for (const entry of plan) {
+      for (const topic of entry.topics) {
+        orderedItems.push({ index: num, keyword: topic.keyword, topic, subheadings: topic.draft && topic.draft.body ? extractKeywordsFromHtml(topic.draft.body) : [] });
+        num++;
+      }
+    }
+    schedulerState = 'photos';
+
+    const allPhotos = [];
+    for (const item of orderedItems) {
+      const n = item.index;
+      const h2Text = item.subheadings.length > 0 ? item.subheadings.join(', ') : '(소제목 없음)';
+      await sendMessage(`📝 <b>${n}번</b> [${item.keyword}]\n   소제목: ${h2Text}\n\n위 주제에 맞는 이미지를 보내주세요 (최대 3장). 다음 번호로 가려면 <b>다음</b> 또는 <b>스킵</b> 입력`);
+      const slotPhotos = await waitForPhotosForSlot(n, item.keyword, 3);
+      for (const p of slotPhotos) {
+        allPhotos.push({ fileId: p.fileId, postNumber: n, caption: '' });
+      }
+    }
+    await sendMessage('✅ 사진 수집 완료! 발행 스케줄(11:00~22:00)을 생성합니다.');
+
+    // 6. 발행 스케줄 생성 (시간 배정은 사진 수집이 끝난 뒤)
     const times = test5Min
       ? generateTestPublishTimes(WRITERS.length * POSTS_PER_WRITER, 5)
       : generatePublishTimes(WRITERS.length * POSTS_PER_WRITER);
     const schedule = assignTimesToPosts(plan, times);
 
-    const subheadingsItems = schedule.map((item) => ({
-      index: item.index,
-      keyword: item.topic.keyword,
-      subheadings: item.topic.draft && item.topic.draft.body ? extractKeywordsFromHtml(item.topic.draft.body) : [],
-    }));
-    await sendMessage(formatSubheadingsReport(subheadingsItems));
-    console.log('[Scheduler] 주제·소제목 보고 완료 (스케줄 순서와 동일), 1~6번 순차 사진 수집...');
-    schedulerState = 'photos';
-
-    // 5. 1~6번 순차로 사진 수집 (글당 최대 3장, 사용자 메시지 올 때까지 대기)
-    const allPhotos = [];
-    for (let n = 1; n <= 6; n++) {
-      const item = schedule.find((i) => i.index === n);
-      if (!item) continue;
-      const slotPhotos = await waitForPhotosForSlot(n, item.topic.keyword, 3);
-      for (const p of slotPhotos) {
-        allPhotos.push({ fileId: p.fileId, postNumber: n, caption: '' });
-      }
-    }
-    await sendMessage(allPhotos.length > 0 ? '✅ 사진 수집 완료! 발행 스케줄(11:00~22:00)을 생성합니다.' : '⏰ 수집된 사진 없음. 스케줄대로 발행합니다.');
-
-    // 6. 발행 스케줄 보고 (schedule은 이미 위에서 생성됨)
+    // 7. 발행 스케줄 보고
     schedulerState = 'publishing';
     currentSchedule = schedule;
 
@@ -557,10 +556,10 @@ async function dailyCycle(opts = {}) {
       console.log(`  ${Math.floor(item.time / 60)}:${String(item.time % 60).padStart(2, '0')} - ${item.writer.nickname}: ${item.topic.keyword}`);
     }
 
-    // 7. 발행 실행
+    // 8. 발행 실행
     const results = await executeSchedule(schedule, allPhotos);
 
-    // 8. 포스팅 결과 보고 (23시 2시간 이내면 23시에 전송, 아니면 즉시)
+    // 9. 포스팅 결과 보고 (23시 2시간 이내면 23시에 전송, 아니면 즉시)
     const kstNow = getKSTDate();
     const kstMin = kstNow.getUTCHours() * 60 + kstNow.getUTCMinutes();
     const minUntil23 = (23 * 60 - kstMin + 24 * 60) % (24 * 60);
