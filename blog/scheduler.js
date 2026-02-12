@@ -475,15 +475,18 @@ async function dailyCycle(opts = {}) {
       }
     }
 
-    // 4. 초안 생성 + 주제·소제목 보고
+    // 4. 초안 생성 (1번씩 순차 진행, 편마다 완료 알림 + 대기로 API 부하·타임아웃 완화)
+    const DRAFT_GAP_MS = 12 * 1000; // 편 사이 12초 대기
     await initAgent();
     let idx = 0;
     for (const entry of plan) {
       for (const topic of entry.topics) {
         idx++;
+        if (idx > 1) await new Promise((r) => setTimeout(r, DRAFT_GAP_MS));
         console.log(`[Scheduler] ${idx}/6 초안 생성: "${topic.keyword}"`);
         try {
           topic.draft = await generateDraftOnly(topic);
+          await sendMessage(`✅ ${idx}번 초안 완료: ${topic.keyword.slice(0, 40)}${topic.keyword.length > 40 ? '…' : ''}`);
         } catch (e) {
           console.error(`[Scheduler] 초안 생성 실패 (${topic.keyword}): ${e.message}`);
           if (e.stack) console.error(`[Scheduler] stack: ${e.stack}`);
