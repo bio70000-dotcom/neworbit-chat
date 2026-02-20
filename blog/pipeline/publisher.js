@@ -248,12 +248,13 @@ async function publish(post) {
 
   // 6. Ghost Admin API로 글 발행
   // source: 'html' 필수! 이것이 없으면 Ghost가 html 필드를 무시하고 빈 본문이 됨
+  const postStatus = process.env.BLOG_POST_STATUS || 'draft';
   const ghostPost = {
     posts: [
       {
         title: post.title,
         html: bodyHtml,
-        status: 'draft', // 비공개(초안). 안정화 후 'published'로 변경해 공개
+        status: postStatus, // 비공개(초안). BLOG_POST_STATUS=published 시 공개
         tags,
         meta_title: post.title,
         meta_description: post.metaDescription || '',
@@ -282,7 +283,25 @@ async function publish(post) {
 
     const published = result?.posts?.[0];
     const writerName = post.writer?.nickname || '기본';
-    console.log(`[Publisher] 발행 완료: "${published?.title}" by ${writerName} (${published?.url})`);
+    console.log(`[Publisher] 발행 완료: "${published?.title}" by ${writerName} (${published?.url}) status: ${published?.status ?? 'unknown'}`);
+
+    // Ghost가 published로 저장한 경우 draft로 되돌려 비공개 유지 (달산책 등 author별 이슈 방어)
+    if (published?.id && published?.status === 'published') {
+      try {
+        await ghostRequest(`/posts/${published.id}/?source=html`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            posts: [{ id: published.id, updated_at: published.updated_at, status: 'draft' }],
+          }),
+        });
+        console.log(`[Publisher] status가 published였음 → draft로 변경 완료 (${published.id})`);
+        published.status = 'draft';
+      } catch (e) {
+        console.warn(`[Publisher] status draft로 되돌리기 실패: ${e.message}`);
+      }
+    }
+
     return published;
   } catch (e) {
     console.error(`[Publisher] 발행 실패: ${e.message}`);
@@ -290,4 +309,55 @@ async function publish(post) {
   }
 }
 
-module.exports = { publish, uploadImage, ghostRequest, getGhostUsers };
+/**
+ * 발행된 글 본문 하단에 관련글 링크 섹션 추가 (작가 서명 앞에 삽입)
+ * @param {string} ghostPostId Ghost 포스트 ID
+ * @param {Array<{ title, post_url }>} relatedPosts 관련글 목록 (최대 3~5개)
+ */
+async function appendRelatedPostsSection(ghostPostId, relatedPosts) {
+  if (!ghostPostId || !relatedPosts || relatedPosts.length === 0) return;
+
+  try {
+    const existing = await ghostRequest(`/posts/${ghostPostId}/`);
+    const post = existing?.posts?.[0];
+    if (!post || !post.html) {
+      console.warn('[Publisher] 관련글: 포스트 조회 실패');
+      return;
+    }
+
+    const listItems = relatedPosts
+      .map((r) => `<li><a href="${r.post_url}" target="_blank" rel="noopener">${escapeHtml(r.title)}</a></li>`)
+      .join('\n');
+    const sectionHtml = `\n<hr /><section class="related-posts"><h3>관련 글</h3><ul>${listItems}</ul></section>`;
+
+    let html = post.html;
+    const hrIdx = html.lastIndexOf('<hr />');
+    if (hrIdx !== -1) {
+      html = html.slice(0, hrIdx) + sectionHtml + '\n' + html.slice(hrIdx);
+    } else {
+      html = html + sectionHtml;
+    }
+
+    await ghostRequest(`/posts/${ghostPostId}/?source=html`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        posts: [{ id: ghostPostId, html, updated_at: post.updated_at }],
+      }),
+    });
+    console.log(`[Publisher] 관련글 ${relatedPosts.length}개 링크 추가 완료`);
+  } catch (e) {
+    console.warn(`[Publisher] 관련글 섹션 추가 실패: ${e.message}`);
+  }
+}
+
+function escapeHtml(s) {
+  if (!s) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+module.exports = { publish, uploadImage, ghostRequest, getGhostUsers, appendRelatedPostsSection };
