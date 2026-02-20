@@ -183,6 +183,8 @@ ${formattedCandidates}
     if (candidate.searchVolumeLabel && candidate.searchVolumeLabel !== '-') {
       topic.searchVolumeLabel = candidate.searchVolumeLabel;
       if (typeof candidate.searchVolume === 'number') topic.searchVolume = candidate.searchVolume;
+    } else {
+      topic.searchVolumeLabel = '-';
     }
     plan[writerIndex].topics.push(topic);
   }

@@ -15,6 +15,9 @@ const { humanize } = require('./pipeline/humanizer');
 const { generateImages } = require('./pipeline/imageGenerator');
 const { publish } = require('./pipeline/publisher');
 const { markPublished, disconnect } = require('./utils/dedup');
+const { updatePublishedPost, getCandidatesForRelated } = require('./utils/publishedPostsDb');
+const { pickRelatedPosts } = require('./pipeline/relatedPostsPicker');
+const { appendRelatedPostsSection } = require('./pipeline/publisher');
 const { ensureRequiredPages } = require('./utils/requiredPages');
 const { selectWriter, getWriterById } = require('./writers');
 const { sendMessage } = require('./utils/telegram');
@@ -159,6 +162,41 @@ async function processOne(topic, writer, options = {}) {
 
     // 발행 성공 → 중복 방지 기록
     await markPublished(topic.keyword);
+
+    // 발행 메타 DB 업데이트 (관련글 추천용)
+    const planDate = options.planDate;
+    const excerpt = (finalPost.body || '')
+      .replace(/<[^>]*>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 400);
+    if (planDate && published) {
+      try {
+        await updatePublishedPost(planDate, topic.keyword, {
+          ghostPostId: published.id,
+          postUrl: published.url,
+          title: finalPost.title,
+          excerpt: excerpt || null,
+        });
+      } catch (e) {
+        console.warn(`[글] 발행 메타 DB 업데이트 실패: ${e.message}`);
+      }
+    }
+
+    // 관련글 링크 섹션 (DB 후보 + AI 선정 후 본문 하단 추가)
+    if (published && published.id) {
+      try {
+        const candidates = await getCandidatesForRelated(topic.keyword, 15);
+        if (candidates.length > 0) {
+          const related = await pickRelatedPosts(finalPost.title, excerpt, candidates, 3);
+          if (related.length > 0) {
+            await appendRelatedPostsSection(published.id, related);
+          }
+        }
+      } catch (e) {
+        console.warn(`[글] 관련글 링크 추가 실패: ${e.message}`);
+      }
+    }
 
     console.log(`[글] 발행 성공! "${published?.title}" by ${writer.nickname}`);
     console.log(`[글] URL: ${published?.url || 'N/A'}`);

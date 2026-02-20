@@ -285,15 +285,16 @@ async function waitForPhotosComplete(timeoutMs = 2 * 60 * 60 * 1000) {
 
 /**
  * N번 글용 사진 수집 (순차 수집용, 최대 maxPhotos장)
- * 사용자가 메시지를 보낼 때까지 대기(타임아웃 없음). 사진 최대 maxPhotos장 또는 "다음"/"스킵" 입력 시 다음 번호로
+ * 사용자가 메시지를 보낼 때까지 대기(타임아웃 없음). 사진 최대 maxPhotos장 또는 "다음"/"스킵" 입력 시 다음 번호로.
+ * "전체 다음" / "사진 전체 스킵" 입력 시 나머지 사진 수집 전체 스킵(skipAll: true).
  * @param {number} postIndex 1~6
  * @param {string} keyword 주제 키워드
  * @param {number} maxPhotos 최대 수집 장수 (기본 3)
- * @returns {Promise<Array<{fileId: string}>>} 수집된 사진 배열 (0~maxPhotos장)
+ * @returns {Promise<{ photos: Array<{fileId: string}>, skipAll?: boolean }>}
  */
 async function waitForPhotosForSlot(postIndex, keyword, maxPhotos = 3) {
   await sendMessage(
-    `<b>${postIndex}번</b> 글 사진을 보내주세요: ${keyword} (최대 ${maxPhotos}장)\n다음 번호로 가려면 <b>다음</b> 또는 <b>스킵</b> 입력`
+    `<b>${postIndex}번</b> 글 사진을 보내주세요: ${keyword} (최대 ${maxPhotos}장)\n다음 번호로: <b>다음</b> 또는 <b>스킵</b> / 전체 스킵: <b>전체 다음</b> 또는 <b>사진 전체 스킵</b>`
   );
   const photos = [];
 
@@ -308,7 +309,7 @@ async function waitForPhotosForSlot(postIndex, keyword, maxPhotos = 3) {
         photos.push({ fileId });
         console.log(`[Telegram] ${postIndex}번 글 사진 수신 (${photos.length}/${maxPhotos})`);
         await sendMessage(`✅ ${postIndex}번 ${photos.length}장 접수${photos.length >= maxPhotos ? ' (최대 도달)' : ''}`);
-        if (photos.length >= maxPhotos) return photos;
+        if (photos.length >= maxPhotos) return { photos };
         continue;
       }
 
@@ -316,12 +317,17 @@ async function waitForPhotosForSlot(postIndex, keyword, maxPhotos = 3) {
       if (text === '다음' || text === '스킵' || text === 'skip') {
         console.log(`[Telegram] ${postIndex}번 ${photos.length}장 수집 후 다음으로`);
         await sendMessage(`⏭ ${postIndex}번 완료 (${photos.length}장). 다음 번호로.`);
-        return photos;
+        return { photos };
+      }
+      if (text === '전체 다음' || text === '사진 전체 스킵' || text === '전체 스킵') {
+        console.log(`[Telegram] 사진 수집 전체 스킵 요청 (${postIndex}번까지 ${photos.length}장 수집됨)`);
+        await sendMessage(`⏭ 사진 수집 전체 스킵. 발행 스케줄로 진행합니다. (나중에 Ghost에서 직접 이미지 추가 가능)`);
+        return { photos, skipAll: true };
       }
     }
   }
 
-  return photos;
+  return { photos };
 }
 
 /**
@@ -388,8 +394,8 @@ function formatDailyReport(plan, dateStr, changedNumbers = null) {
     for (const topic of entry.topics) {
       const changed = changedNumbers && changedNumbers.includes(num) ? ' ← 변경' : '';
       let volSuffix = '';
-      if (topic.searchVolumeLabel && topic.searchVolumeLabel !== '-') {
-        if (typeof topic.searchVolume === 'number') {
+      if (topic.searchVolumeLabel != null && topic.searchVolumeLabel !== '') {
+        if (topic.searchVolumeLabel !== '-' && typeof topic.searchVolume === 'number') {
           volSuffix = topic.searchVolume >= 10000
             ? ` (검색량: ${topic.searchVolumeLabel}, 약 ${(topic.searchVolume / 10000).toFixed(0)}만건)`
             : ` (검색량: ${topic.searchVolumeLabel}, ${topic.searchVolume.toLocaleString()}건)`;

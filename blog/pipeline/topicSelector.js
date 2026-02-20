@@ -9,6 +9,7 @@ const { getNateTrendTopics } = require('../utils/nateTrends');
 const { getNaverNewsTopics, getNaverTopicsByWriterQueries } = require('../utils/naverTopics');
 const { isDuplicate } = require('../utils/dedup');
 const { getNaverBlogSearchTotal, getSearchVolumeLabel } = require('../utils/searchVolume');
+const { getExcludedKeywordsForSelection } = require('../utils/publishedPostsDb');
 
 // 카테고리별 확장 키워드 (작가 categories만으로는 부족할 때 보강)
 const CATEGORY_EXPANSION = {
@@ -241,14 +242,21 @@ async function getTopicFromSource(writer, source, excludeKeywords = new Set()) {
   return topic;
 }
 
-/** AI 선정용 후보 풀: 네이트 10 + 네이버(달산책 5, 텍스트리 5, 삐뚤빼뚤 3) + 시즌 2 ≈ 25개. sourceTag 명확 부여 */
+/** AI 선정용 후보 풀: 네이트 10 + 네이버(달산책 5, 텍스트리 5, 삐뚤빼뚤 3) + 시즌 2 ≈ 25개. sourceTag 명확 부여. DB 확정 키워드 제외 */
 async function getCandidatesPool(writers, postsPerWriter = 2) {
   const pool = [];
   const usedGlobal = new Set();
+  let dbExcluded = new Set();
+  try {
+    dbExcluded = await getExcludedKeywordsForSelection({ currentYear: new Date().getFullYear() });
+  } catch (e) {
+    console.warn('[TopicSelector] DB 제외 키워드 조회 실패:', e.message);
+  }
 
   const addToPool = async (topic, sourceLabel, sourceTag) => {
     const keyword = (topic.keyword || '').trim().replace(/\s+/g, ' ');
     if (!keyword || usedGlobal.has(keyword)) return false;
+    if (dbExcluded.has(keyword)) return false;
     const dup = await isDuplicate(keyword);
     if (dup) return false;
     pool.push({
@@ -329,7 +337,29 @@ async function selectDailyTopicsWithQuota(writers, postsPerWriter = 2) {
   return plan;
 }
 
-/** AI 미사용 시 fallback: 기존 랜덤 할당 (시즌2/네이버2/트렌드2) */
+/**
+ * 주제 한 건에 검색량 + 선정 사유 부여 (보고 메시지용)
+ * @param {Object} topic - { keyword, source, ... }
+ * @param {string} defaultRationale - rationale 없을 때 사용할 문구
+ * @param {number} [delayMs] - 호출 후 대기 ms (연속 호출 시 API 한도 고려)
+ */
+async function enrichTopicForReport(topic, defaultRationale, delayMs = 0) {
+  if (!topic || !topic.keyword) return;
+  if (!topic.rationale) topic.rationale = defaultRationale;
+  if (topic.searchVolumeLabel != null && topic.searchVolumeLabel !== '-') return; // 이미 있으면 스킵
+
+  try {
+    const total = await getNaverBlogSearchTotal(topic.keyword);
+    topic.searchVolume = total;
+    topic.searchVolumeLabel = getSearchVolumeLabel(total);
+  } catch (e) {
+    topic.searchVolume = null;
+    topic.searchVolumeLabel = '-';
+  }
+  if (delayMs > 0) await new Promise((r) => setTimeout(r, delayMs));
+}
+
+/** AI 미사용 시 fallback: 기존 랜덤 할당 (시즌2/네이버2/트렌드2). DB 확정 키워드 제외 */
 async function selectDailyTopicsWithQuotaFallback(writers, postsPerWriter = 2) {
   const total = writers.length * postsPerWriter;
   const sourceQuota = ['seasonal', 'seasonal', 'naver_news', 'naver_news', 'nate_trend', 'nate_trend'];
@@ -337,7 +367,13 @@ async function selectDailyTopicsWithQuotaFallback(writers, postsPerWriter = 2) {
     const j = Math.floor(Math.random() * (i + 1));
     [sourceQuota[i], sourceQuota[j]] = [sourceQuota[j], sourceQuota[i]];
   }
-  const usedKeywords = new Set();
+  let usedKeywords = new Set();
+  try {
+    const dbExcluded = await getExcludedKeywordsForSelection({ currentYear: new Date().getFullYear() });
+    dbExcluded.forEach((k) => usedKeywords.add(k));
+  } catch (e) {
+    console.warn('[TopicSelector] fallback DB 제외 키워드 조회 실패:', e.message);
+  }
   const plan = writers.map((w) => ({ writer: w, topics: [] }));
 
   for (let slot = 0; slot < total; slot++) {
@@ -356,6 +392,15 @@ async function selectDailyTopicsWithQuotaFallback(writers, postsPerWriter = 2) {
     plan[writerIndex].topics.push(topic);
     usedKeywords.add(topic.keyword);
   }
+
+  // fallback 경로도 보고서에 선정 사유·검색량 표시되도록 보강
+  const ENRICH_DELAY_MS = 150;
+  for (const entry of plan) {
+    for (const topic of entry.topics) {
+      const rationale = `소스별 할당 (${topic.source})`;
+      await enrichTopicForReport(topic, rationale, ENRICH_DELAY_MS);
+    }
+  }
   return plan;
 }
 
@@ -371,4 +416,4 @@ async function selectTopics(writer, options = {}) {
   return [topic];
 }
 
-module.exports = { selectTopics, selectDailyTopicsWithQuota, getTopicFromSource, getCandidatesPool, enrichPoolWithSearchVolume };
+module.exports = { selectTopics, selectDailyTopicsWithQuota, getTopicFromSource, getCandidatesPool, enrichPoolWithSearchVolume, enrichTopicForReport };

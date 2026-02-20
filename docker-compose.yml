@@ -151,9 +151,11 @@ services:
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
       - REDIS_HOST=redis
+      - MONGO_URL=mongodb://mongo:27017/blog
     depends_on:
       - ghost
       - redis
+      - mongo
     profiles:
       - blog-run
 
@@ -174,12 +176,14 @@ services:
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
       - REDIS_HOST=redis
+      - MONGO_URL=mongodb://mongo:27017/blog
       - DEBUG_LOG_PATH=/var/log/neworbit/scheduler.log
     volumes:
       - ./data/logs:/var/log/neworbit
     depends_on:
       - ghost
       - redis
+      - mongo
 
   log-viewer:
     build: ./log-viewer

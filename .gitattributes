@@ -1,0 +1,2 @@
+# Shell scripts: always LF on checkout (avoid CRLF from Windows)
+*.sh text eol=lf

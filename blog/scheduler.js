@@ -14,7 +14,7 @@ require('dotenv').config();
 const fs = require('fs');
 const { WRITERS } = require('./writers');
 
-const { selectTopics, selectDailyTopicsWithQuota, getTopicFromSource, getCandidatesPool, enrichPoolWithSearchVolume } = require('./pipeline/topicSelector');
+const { selectTopics, selectDailyTopicsWithQuota, getTopicFromSource, getCandidatesPool, enrichPoolWithSearchVolume, enrichTopicForReport } = require('./pipeline/topicSelector');
 const { selectTopicsWithAI } = require('./pipeline/topicSelectAI');
 
 function serverLog(msg, data = {}) {
@@ -38,6 +38,7 @@ const {
   sendDailySummary,
 } = require('./utils/telegram');
 const { extractKeywordsFromHtml } = require('./utils/pexelsSearch');
+const { insertConfirmedPlan } = require('./utils/publishedPostsDb');
 
 // 예기치 않은 예외/거부 시 로그 및 텔레그램 알림 (발행이 멈춘 원인 추적용)
 process.on('uncaughtException', (err) => {
@@ -246,6 +247,7 @@ async function reselectTopics(plan, numbers) {
         const internalSource = normalizeSourceForReselect(originalSource);
         const newTopic = await getTopicFromSource(entry.writer, internalSource, usedKeywords);
         if (newTopic) {
+          await enrichTopicForReport(newTopic, `재선정 (${internalSource})`);
           entry.topics[i] = newTopic;
           usedKeywords.add(newTopic.keyword);
           console.warn(`[Scheduler] ${num}번 재선정 성공: [${originalSource}] → [${internalSource}] "${newTopic.keyword}"`);
@@ -260,7 +262,7 @@ async function reselectTopics(plan, numbers) {
 }
 
 // ── 발행 실행 ──────────────────────────────
-async function executeSchedule(schedule, userPhotos) {
+async function executeSchedule(schedule, userPhotos, planDate) {
   const results = [];
 
   let displayOrder = 0;
@@ -315,10 +317,11 @@ async function executeSchedule(schedule, userPhotos) {
     let result;
     try {
       result = await processOne(item.topic, item.writer, {
-      userImageBuffers,
-      postIndex: item.index,
-      preGeneratedDraft: item.topic.draft,
-    });
+        userImageBuffers,
+        postIndex: item.index,
+        preGeneratedDraft: item.topic.draft,
+        planDate,
+      });
       if (!result || typeof result.success === 'undefined') {
         result = { success: false, keyword: item.topic.keyword, error: 'processOne returned invalid result', writer: item.writer.nickname };
       }
@@ -430,6 +433,12 @@ async function dailyCycle(opts = {}) {
       switch (response.type) {
         case 'approve':
           approved = true;
+          const planDate = dateStr.split(' ')[0]; // 'YYYY-MM-DD'
+          try {
+            await insertConfirmedPlan(plan, planDate);
+          } catch (e) {
+            console.warn('[Scheduler] 확정 주제 DB 저장 실패:', e.message);
+          }
           await sendMessage('✅ 1차 승인 완료! 초안 생성 후 주제·소제목을 보내드립니다.');
           console.log('[Scheduler] 승인됨');
           break;
@@ -471,6 +480,8 @@ async function dailyCycle(opts = {}) {
       }
     }
 
+    const planDate = dateStr.split(' ')[0]; // 'YYYY-MM-DD' (발행 후 DB 업데이트용)
+
     // 4. 1~6번 순서: N번 초안 생성 → N번 소제목 전달 + 사진 수집 (1번 사진 접수 완료 후 2번 초안 생성 … 방식으로 API 부하·타임아웃 완화)
     await initAgent();
     const orderedItems = [];
@@ -500,10 +511,14 @@ async function dailyCycle(opts = {}) {
         return;
       }
       const h2Text = item.subheadings.length > 0 ? item.subheadings.join(', ') : '(소제목 없음)';
-      await sendMessage(`📝 <b>${n}번</b> [${item.keyword}]\n   소제목: ${h2Text}\n\n위 주제에 맞는 이미지를 보내주세요 (최대 3장). 다음 번호로 가려면 <b>다음</b> 또는 <b>스킵</b> 입력`);
-      const slotPhotos = await waitForPhotosForSlot(n, item.keyword, 3);
-      for (const p of slotPhotos) {
+      await sendMessage(`📝 <b>${n}번</b> [${item.keyword}]\n   소제목: ${h2Text}\n\n위 주제에 맞는 이미지를 보내주세요 (최대 3장). 다음: <b>다음</b>/<b>스킵</b> / 전체 스킵: <b>전체 다음</b> 또는 <b>사진 전체 스킵</b>`);
+      const slotResult = await waitForPhotosForSlot(n, item.keyword, 3);
+      for (const p of slotResult.photos) {
         allPhotos.push({ fileId: p.fileId, postNumber: n, caption: '' });
+      }
+      if (slotResult.skipAll) {
+        console.log('[Scheduler] 사진 수집 전체 스킵됨');
+        break;
       }
     }
     await sendMessage('✅ 사진 수집 완료! 발행 스케줄(11:00~22:00)을 생성합니다.');
@@ -544,7 +559,7 @@ async function dailyCycle(opts = {}) {
     }
 
     // 8. 발행 실행
-    const results = await executeSchedule(schedule, allPhotos);
+    const results = await executeSchedule(schedule, allPhotos, planDate);
 
     // 9. 포스팅 결과 보고 (23시 2시간 이내면 23시에 전송, 아니면 즉시)
     const kstNow = getKSTDate();

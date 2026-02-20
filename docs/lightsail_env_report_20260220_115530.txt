@@ -1,0 +1,356 @@
+==============================================
+Lightsail 서버 환경 수집 결과
+실행 시각: 2026-02-20T11:55:30+09:00
+==============================================
+
+=== 1. 기본 정보 ===
+Linux ip-172-26-14-81 6.8.0-1045-aws #47~22.04.1-Ubuntu SMP Thu Jan 29 21:28:23 UTC 2026 x86_64 x86_64 x86_64 GNU/Linux
+---
+PRETTY_NAME="Ubuntu 22.04.5 LTS"
+NAME="Ubuntu"
+VERSION_ID="22.04"
+VERSION="22.04.5 LTS (Jammy Jellyfish)"
+VERSION_CODENAME=jammy
+ID=ubuntu
+ID_LIKE=debian
+HOME_URL="https://www.ubuntu.com/"
+SUPPORT_URL="https://help.ubuntu.com/"
+BUG_REPORT_URL="https://bugs.launchpad.net/ubuntu/"
+
+=== 2. 현재 디렉터리 및 상위 ===
+/home/ubuntu
+---
+total 116
+drwxr-x---  6 ubuntu ubuntu  4096 Feb 20 11:55 .
+drwxr-xr-x  3 root   root    4096 Feb  7 14:12 ..
+-rw-------  1 ubuntu ubuntu   183 Feb 20 11:51 .Xauthority
+-rw-------  1 ubuntu ubuntu 42889 Feb 14 16:21 .bash_history
+-rw-r--r--  1 ubuntu ubuntu   220 Jan  7  2022 .bash_logout
+-rw-r--r--  1 ubuntu ubuntu  3771 Jan  7  2022 .bashrc
+drwx------  2 ubuntu ubuntu  4096 Feb  7 14:14 .cache
+drwx------  3 ubuntu ubuntu  4096 Feb  8 23:18 .config
+-rw-------  1 ubuntu ubuntu    20 Feb 12 16:24 .lesshst
+-rw-r--r--  1 ubuntu ubuntu   807 Jan  7  2022 .profile
+drwx------  2 ubuntu ubuntu  4096 Feb  7 14:12 .ssh
+-rw-r--r--  1 ubuntu ubuntu     0 Feb  7 15:12 .sudo_as_admin_successful
+-rw-------  1 ubuntu ubuntu   882 Feb  9 16:37 .viminfo
+drwxr-xr-x 18 ubuntu ubuntu  4096 Feb 14 16:01 chat-app
+-rwxrwxr-x  1 ubuntu ubuntu  2903 Feb 20 11:55 lightsail-collect-env.sh
+-rw-rw-r--  1 ubuntu ubuntu   663 Feb 20 11:55 lightsail_env_report_20260220_115530.txt
+-rw-rw-r--  1 ubuntu ubuntu   458 Feb  7 15:12 nginx.conf
+-rw-r--r--  1 root   root       1 Feb 11 21:21 q!
+-rw-rw-r--  1 ubuntu ubuntu  2529 Feb  7 15:12 server.js
+
+=== 3. 프로젝트 루트 후보 ===
+사용할 프로젝트 루트: /home/ubuntu
+
+=== 4. 폴더 구조 (depth 2, 프로젝트 루트 기준) ===
+.
+./.cache
+./.config
+./.config/procps
+./.ssh
+./chat-app
+./chat-app/.cursor
+./chat-app/.git
+./chat-app/.github
+./chat-app/ai
+./chat-app/blog
+./chat-app/chat
+./chat-app/data
+./chat-app/docs
+./chat-app/ghost
+./chat-app/landing
+./chat-app/lib
+./chat-app/log-viewer
+./chat-app/logs
+./chat-app/monitoring
+./chat-app/ssl
+./chat-app/wave
+
+=== 5. Docker 상태 ===
+NAMES            STATUS                PORTS
+daily-report     Up 5 days             
+nginx-exporter   Up 5 days             0.0.0.0:9113->9113/tcp, [::]:9113->9113/tcp
+nginx            Up 5 days             0.0.0.0:80->80/tcp, [::]:80->80/tcp, 0.0.0.0:443->443/tcp, [::]:443->443/tcp
+grafana          Up 5 days             0.0.0.0:3001->3000/tcp, [::]:3001->3000/tcp
+blog-scheduler   Up 5 days             
+prometheus       Up 5 days             0.0.0.0:9090->9090/tcp, [::]:9090->9090/tcp
+chat-app         Up 17 hours           0.0.0.0:3000->3000/tcp, [::]:3000->3000/tcp
+ghost            Up 5 days             0.0.0.0:2368->2368/tcp, [::]:2368->2368/tcp
+node-exporter    Up 5 days             0.0.0.0:9100->9100/tcp, [::]:9100->9100/tcp
+cadvisor         Up 5 days (healthy)   0.0.0.0:8080->8080/tcp, [::]:8080->8080/tcp
+mailpit          Up 5 days (healthy)   1025/tcp, 1110/tcp, 8025/tcp
+redis            Up 5 days             6379/tcp
+mongo            Up 5 days             27017/tcp
+log-viewer       Up 5 days             0.0.0.0:3010->3010/tcp, [::]:3010->3010/tcp
+---
+DRIVER    VOLUME NAME
+local     0a5717565f6d60bc5f03b797f25fdb328a5b72f196f1c71f96b6518d5b81f386
+local     0aa88e636a10b55c426048e3effd7088d7875665a4a2705ab6199cf07634d2c8
+local     0afe6b2ff931cd83344abd068f3d8dce7396de5a1328d7697b4c9d928e652b6f
+local     0c5ab67335fc71c6089a9bea23f2e35c76b8036ad4b0d54ab52aa31464aafa22
+local     0d2e4a96b8da169f12a255e29eb90022f41aaaaf70ad7cc82e3c61b7d5b262b9
+local     0d9e2c7ce49dce5a027261241bf2611729a3fe711d81a4bc097446e918582dcc
+local     0db9167c708fe622116172925c544d7a6f50a8fd51df615ba6898327421b3ec2
+local     0e5d8e234c2a76871ed8c20d1cc2824269945403f1238212d9c1034211375854
+local     0e43c146b15d7a7d5f1108b8b9f395bd2585baec272a8f46a7e5fba462532bfb
+local     0e92c1b61fce4db111991ab967537b7d3d36d2830069de36777d3b4d3e824ccb
+local     0fc02d92272c8a286408e2bc7ecb1447c30d3fbe59a9f47ff81947ebd846ef2a
+local     1ab9ff837a25fe2b30cc3e1f5633bf2659125159fbb098d85dca32064cfdd9ef
+local     1be25860e108dcbf41fe958a2ebfbf21c188b027dc3b215725a7e132994f597c
+local     1c7dda2640bc449286313f0c081c95824588b305996d7490828f1b8fbacac555
+local     1f74c241340ee13bf295abade20da94cf2648de942c6136a8aa8e75bd284ef8e
+local     2a9200980ba6c4977315843b578bf7f3b680c254c0c4c83fa76bef9cc9f0f2e9
+local     2b8ac7763fe1413ae4e1cb809ec00bdccb859673ac584b4f4931c9ea48f6c7a6
+local     2d2ac25efb056d2b3502f022d8686b398dfb858f575956b5c97a522c17c830ab
+local     2ef5b6983e78fa1dfa8c24271cad9558f8bf60f763362cb7e0271e4f2e66ef22
+local     3ad49f4b1b4f84b5e5f5d85d8c2fd52bc1a3915522a71261005962a96c9953de
+local     3dd3394c28622ee4dbc66769f2abee98b16a5667474682cfe8bd1fd69188e490
+local     3de584edc5805ff6c36e0401ba05ed8a3be90809c5a36171e7f564f965def36d
+local     3e2b247867e5a5519db18435d1006ac3265d030e2358a0212292a73e5dae515e
+local     3f47c928b045c150852d4fa70de32422c87482d81156e0e9cecb2b9d3f9f8d3f
+local     3f091c470127d1b76f9d0d9dff5d5ec61abb72676c6cc2f9c724bb64ff2737e8
+local     03d451ec1396ac1f21df17eadc4c7311bdba8b78879ff954f77fa471de28c1e8
+local     03ed2e8784125cd71982032e1356c5ede4b286d596c5d8f0abd0527959e86a18
+local     4bf23aa027431ee97c2074f8a88b4a77bff4e698908c4ed4cc64f53a478c584e
+local     4c6190935ef5266c8a4322eae54fa9563952f9c1d3b7ff3de2aa842df1899d42
+local     4dc5d1fc298e180bc7f3ec196e601f8a0f5466b902fc8b63d4166281f4464270
+local     4ef2973f531f0c5f3301d9b01493734ce49aeda874c3a74faefaec23f9f7cda3
+local     4feb5c186d447949975e30881e6bd610a644ba2ee4dc7497c41d5b655c43c26a
+local     5a63f88518090cedf35903ed451cd4dc42d02e142603fa19b7b8f6cd299c9b7d
+local     5a581a5633ca56ab62434a5581ae2404872e2aae1c1f1e6a1c6fad39b98e654a
+local     5ed780ab233a364981fa52326d8024e39885ff458786126a5785c406eb27b9d1
+local     5f71ad6169f4aec61f18c763d0822765b154ac8effacc5d5f9fcc33311e3ed60
+local     05c1de2d84cd4b300fc3cd6306842c167df94ec86551477f79db687e111b57bd
+local     6b957751523c53a766712f1fbc0ef2cdff7c06fe22180ef03d0a4c0ee13e8881
+local     6ca0a29f06808c3f5e812425664469235d0d2dca8b845530c1cf1e7c0d385dfd
+local     6dbd512b7eec30ce57b89e3061114158efa76a2359e0e921f90f8be06d8febc0
+local     6e079b8dbe27164cc92420fe388af7da7f2d1fbec29b2b1b4bba4303fd5c02a6
+local     06dedd1695c0df343f251150caae7767c096c4fb54fde4597cae03e22aa8cca1
+local     7c7b5725ba7a35bca705394bacd579125b9681bff9c0e461297b6ba57e96a4b8
+local     7d7723ca3dcf17d05cd26f65f0bb57ab8617bd5c978d0c5e59af9cce99f4256b
+local     07f64652d622a11d74ef19d5e5585223118949aba6ce3fffdcffd872a62437b8
+local     8ad809ba99304b69beb295da59c34dae77648fe19b7a7e73064f805c63684d16
+local     8c5a5af586c7ea53cb316562e21b54df1a390005f5cb4846c2338f5e50f58507
+local     08aa2eea84dfdb528816378ec275ffbd908514c9a85b48c6c37d059e955c9d2e
+local     08c031a5062d2ad4e3671f991193b2530edc7ed0fc5741ee8e19aa2736ed4716
+local     9af295a8cf2f31a84e2752e3eaae9c8ff3fb215522971c10f1b7515f02308112
+local     9e077ae2d74aebfd0b07b5034469309d56885a81dd6bd8fb45b504ed7b9e6fea
+local     9ed3bfe178de845134236fc807f1f1c74c36917a18976681962f1e9d0fed49c8
+local     9f1cfd0d1fa181d495ee0222bbbabffb1b9fba4c0323a610ea0eb07563b653bb
+local     11d426a8f5d8b11201edc699b50b505dd53740904023c19cbb1ca0e19b7e3cf5
+local     016ab955e7e43067847b054bb3e60542e154ce0e9c16ce99d6ac9dd043afec33
+local     17baba07e680f05152438696d13f223cb1edc3b14ab742a51c7bbc7d725a3f9f
+local     18a23f25c46d0a4512af94d64dc341cb82dd9dd7cdc215953a36837a24f3c644
+local     18d0187820df37a3cb4add58e85b68df4d90774eb90322bbf7b1d101fde987f8
+local     22e93fac99f2541a40f1b3ace236f94bafdf63b98a01ba0a69925f543cfa1999
+local     26b4b67a6dc56e99ca9152fcb674906f2ecf03f304a1da112c14013986063ed6
+local     27a99c263d190fa9295d71411754d86bfacb8db2603cb1d28239c6e15643d99a
+local     32bff63281b5b6e9cf4a7b3aafbb9af31376dd72c1f46383c3f3582a26dc5c6b
+local     35dc1df8f6f5b7de7a01d3c6fd0c07b7b85ab06a9a1ab104f4f2943564dbb5b7
+local     38f6337f9fded4a4ceed31cd4fc45f60a85ac3ce7cede29f0def0ff401b5daba
+local     43baf638ef9067897d66d0d0dc837ff8d941fd263bad7700cad91cc1fa81d3d2
+local     45b0b2d6021991e557844f81f0f4b3b9f6f40308d7e3fe2a600423488b4494f0
+local     46e84b6d2aa1138aa5b233839fd99243765bf53577ed54a81be3c22e95fc8f7a
+local     48b57a0f46bc27348be97108d19ce13f9166726119befb36aa4ca6456a10a532
+local     58b6c17f9d95677e415707221cadf1585f454b605b523104ef52ee31cfb6c12f
+local     58d8393d443f7658006838872e9d9dedb089636ddc67277d56f58b30ab479d60
+local     59af2368709775e9b98a3590b6e6e6eaeefe76602cfdc6d1d6dbc8aaf872ff47
+local     60af7708c58b4efae8881837ee6a314a96b128d384823a53276619ffd032d43a
+local     63e717bd0303d38fac512dfc7ad869d79e0e02224defa25e854ecc7498101530
+local     64eeac06a52a7c68a99910ba90e4b9430a0115f329517eb039223776ed5b3faf
+local     67b7e59f5a38420242ba89036c18da254d800fd677fe95190822920f5c8c5dfa
+local     67eeec64a1359f3ab3cd50039bdcf6c0934020f1ba51ce5c3c34c0583b03616d
+local     70a39e5d6a60f47bb4e8b5f8129a530d5bf40f3a772a9350e982104e1e941d0e
+local     73a9a8e552631ff2d917ce0ca9ed7255ff02040babedff9cdfa039351752330e
+local     078ddb4039fe18e28fe4850f36d8886fafa70d734a499e188f5f9f5e52d72c9a
+local     79f7f98771f5b59f07fa67b6d246d8313c25045f8d50d4d5031e0940633a4afb
+local     80a02925ea5e585d8f058b234f7591a0ccf27092348ad199c2f6159986994a8c
+local     80ddb863995cd1da3b0e98d9b4e24024617c5463d473ea1deaa1d28ece7d7c48
+local     82b23318ffb5ad530ad0f6267043a68b35671550960c1cf87059d29a09f75e3b
+local     82f3152e9c837822e02d08aaabffe3e2ff6753801c19f8b9d185c99558c86a8e
+local     83cc00e9705f28b922675c34661e03e27d767563a75e43f5b635a60d4e2982e4
+local     83cfda7c39ffedb2fa962e1bc385eb9330baa2aa7b429acba5e70ded8e1d71d3
+local     92cd843268f6972e875f3c2aea999da197153a97a5c9fe3508ff756c55709e6d
+local     94aa7c79780ba128b167e7a98b734dc9bc141e55724004bea0016f4f4dda8422
+local     95e5c655aa38a46e0c6e0c750e6f5814eb09815c34e14ec379f21573f6b15cd7
+local     180b722b2aac5de4cd0a3485eda84549b41d57211c044ea1bb9ab396bcb5ec80
+local     187dccfeabbb8dd9e1aea19faee9588e1dc4f53a45bf627b992c539cc3b6b7b2
+local     209e9bd53f03e5588560def2f897c642fcae865aa990ad513256d42b53f70ed1
+local     241c020e1d25a8c54dd2ea16fb1a1250319d3c36ff5087b851be3c5d771e86d2
+local     253c1d2ce725b1b899a61e61af6978671ed40903f03bae139df0c16105046c1f
+local     314cd4f17d2b1ce7c73f39c3382747f5e3e52ecc01095fe289e33584b1512d86
+local     375cd10cebd09b201ba75eca31bc5800b8699cdabb068bb310110bc449c263e2
+local     420b5a7d68e203ccb1b3406ab7c1641ea05370450ba20be0a13836edb71e7d4d
+local     446bcd6d6fdd1956f1d6121826c370db74104cb1ad10c17eff4f4458f2765fe4
+local     464b56cf1bfaec08b6e28689416f8af210202fc3731628428d389d7d91d39958
+local     486d062a4b221a5818bb4c887b1e3c7124cfd5907b9206dab956576e0a90a83c
+local     493dbb98fc599a993f061b772a2114166dff0a41422e867545c627c3bc816221
+local     550e728422c2ac10a5755d2563b08e030f42fc843bd00e4165feb0bd8695f6f0
+local     593d31524965859a68bd5bcb9683f3e48ab16cd70640318643bfca4998ae0f6a
+local     608f68cf14dd738704ece34a516ac53eb8d6c4dfacc195f35cebf328df8ee1cd
+local     839f00b7310fcf367602627f5976567a85fc986921cb4970fc35ca0186246bbe
+local     847b86843d044dffa1c2e421ea66fe3e219cf4bb51ad5cab3e7062f2436bbcb9
+local     864aea6eabc92f5ace48eccace2f89520aba8bd6d0ed37669a71f18ead1ccf96
+local     918e82afb356e9f05c134d518865ca6c6f56451bc388ebec53694e60122193fd
+local     938ad9edafd821b00a43530f570cbfb41ba7d65ab3e3c5d24af132abde3860f8
+local     955fff02f633cf4d9be02b30e4e0fef2c35b84750aea4d172ed9ed87043e594a
+local     958c8b486d91e59d8bdc0dde1034efc38602cf4c741209bc28e429b395a76bc8
+local     1075c4ff420e7a7ed0d3005341c72b157f006773f5c6390d46830f45501119ac
+local     1466e7613a0316e3e8b16ad05c4553c92a9d4b8cf07d3d6c0a1822a0fba32a4b
+local     02526b05c4ffc7d2691cd359279a123d1f2adb8b85c5527a56394b11aa42675b
+local     3587daaa49a87c4bee739c508bc48170214230b5bb7273944c22035294f9759c
+local     5464d8e8508679e6e6d649f6d6f83a61c35483da80780a5a8d770feda15968de
+local     6594c3e694287c6e81d51e6eb8c26640d6a19bd088794003abe82b7d09cfa2d7
+local     7879b9e47357331d67accdf3bca2dd298e8f1170735c6cf93459ba8b48df0b5a
+local     08252fbd3bf650bd21f759d6e7924090a94309bb82f32175d6457134f10cb626
+local     8653d3c3777f581750d28d4e769bcce5717d03954b9dc206904967adeb7a01e8
+local     9929c4aecdc102b5743c6c1308c03f208a59fbfd84428aee556cd411ca9f7bd7
+local     10201d95f086484ba808f41766790d88ec050b82647ed453ac49d12feb7891d9
+local     15024de1fb709797afe589cfe5b72f8374cf9cb3a0fbd496300d580b1da8b6c4
+local     30342d3a7082d2bd35df30721c2d194b2ed495fab1479d51be7ab2d475955050
+local     35379ea0cd713761b269f133d70b925dc0b9678151762566493c0b7a2895a2cd
+local     58298b799e5be264bbc526e042ad70924d7f9f8ebc4e532625a2df1ddc5afb02
+local     66498b70b72018fd6f885aed39791ec825ad402a3fe45b2f72d292f96a7f9993
+local     85679b601e6542b0fba3381e16bfe67d59cab0a7e420bc1940acc7f475e01db5
+local     86462ea2288c5ae1ce35806abc120e5798e66f6ceb633ad83bb64d3afc9b810b
+local     244868ae475ee93998fe9ba5fe020a5d2ac6569fc5e5a101500285915b348869
+local     790261dbe275520b8c1300a134a583eccb990f7db9d20ad855f5be79b18b9c38
+local     801368e9c846e0fd4beaf6687e030a9070bbb3196fdcfff429fa23b5ec381be7
+local     825851e8e138c23a085868b2c1198fe9be52bdad62b31f4e9aab0836096a62aa
+local     927925c78fde7383e9a0b6e7d1a7c6f94ab896ba27416cbdefdc3e3590150be7
+local     8452688d5ec80f799011d84bdd54adcf851ac3191bd707ce095d7b1643f7a649
+local     36830625b6a997ffce3467516317480d9688540011c81cf951351260c0f209c7
+local     424562389a70bc4ba17c00f29b7606efc5a5fa8ca14e734fad1621f544318ec0
+local     680453639d8eb2dbf9f026a2457306a666fc6fe8ba4f27e393a861348fc3b870
+local     984871611c5e8597c2cc88f9278a8a44433cbd8c8f46cd4dfe9d6b72221d1c9e
+local     a0e72f9fa1b5c647a0b529d62c6449dd2562dfb07e55160c8d71f0fadecb1062
+local     a1b539982affc10aa26253c730e9334decf671951d7caa32a667805ffd9bf780
+local     a6b42b6d79c08ebf93c6970aacfaf03ff2f3d0a4b7968f1bd5461eb5c6c835bc
+local     a6fb80a218c6ba71c1382157e8fe1d1e9f8cccac7b69162df066ac33265ff1e6
+local     a24d0e66b9e8ff7bd50dd67d64956f6623fd527b2aba0096994e7eb6121a8424
+local     a264ce8cbd6e6b1cae998fd5ccf28746fea221a15b52bade257081a894e134e8
+local     a04882a86bb5178a70d2aec4753c3cc193d57b96a257b468a2f81f38e3aaa4b4
+local     a00133889534bb5fcbf4fdbfc01e1c2959090305ba9887d9cc235d85e2b69d87
+local     aa28048b2dd91740a3f868901f7aaef7ae986681a98b05204ed61bd8ec9944e4
+local     ab2f4b98f41e5b47947f71d5a73e99d0514a1ad35f67fe6e680e7fdd0100339e
+local     ac7f156faeb772e59303de9e86e4565dfabd6b7bcf873b89bd31900c6ac0cd03
+local     ac65e8afca1dc102de0eae387c4d634d43ebd615eef7758f04d4ddf86ba8b0c0
+local     adf1278345f69a128826b8a61c1b0e7d8e7abd2df0f1d0f409c41515daf139dd
+local     ae123fdd568302d739dc537b786465ac922bae3387d5cf5098544e18509b00f2
+local     af0b8bc59753c38724571e83db5908d91822160c16cefe0f6c1becf3c43edafa
+local     af26154ace5181508428f683fbbcb650ebf78ad2e6bf89f1047e9f97f2774bc9
+local     b0aafd06b3659662126d1927a4a0041d3867cd0e27662145895708224ca68855
+local     b6ea8222442fa08671919d2dce1ce1ea04785fd47bcc6fcb6c898db592d23dd7
+local     b06da67ca4ee978a46bdfdfb19da654303a3bded2675a87d7664c0a08f7e83ac
+local     b20fab29e8651afe015ac0e4fe13cadef0061a031af3e0d1fc529408a78c9c05
+local     b45f5dfc091631407bb71c42a90b4aaa79194d1e580f4013523a5d2d90a03635
+local     b57cb2e4ef4150880d59eced07a95548e9643a79551edec9f3c24d6ed68b001e
+local     b85c613e190a70a3c266de1247a388f55a436a1dedaa2e0c6ffa8adcc19f38ba
+local     b139f42428ce4d54f91b505fe4aa00211b9935b567fbc242d7440a6602025e2e
+local     b314bf1ba3c13eb713500a13fd57e6efd7f621afe7fab8d74afd14e79e3e99d6
+local     b344ca917988829b443074b00ef96534f1b03f052f66b88d5cdfc25af2e81148
+local     b06129e4f5b4e8a299bf49c0369f531fd71afc4178c945267733d03c12425074
+local     b7598962f4a940aa12312407a365087cfe649d20c28cc49e8b8781e676b59d75
+local     bb52e14550f5839dde8919c2671e4a5cec4ee3637428f06c1b40daf3d993e669
+local     bcf1cbf45dacd3489f6825fce01b1d6ae6445565f59fbe3278a8b9c54cd982aa
+local     bd14549146d998b129d529d9eb9c560279efada9807a48b05b6e1e209bf0d422
+local     be1dd2f7d3b917f18ce42dd1972d54c4d1b2e26980dcbff8d1417f81c5167ba9
+local     bf6e3a188e8db2e513d90ee205e3d796b2676702792c43ae0c1a4ffdc89b8280
+local     c0af7b73c19d4db3189a6ecc5d1bf12ebf68bd3f86d343b9ea3a6e0a53f5f1d2
+local     c5a000bea59516c76ea0076953f5ea7611b3c9bdedb624fdef995ce8bb3fb3ca
+local     c8aa06932bda2716a41c7c4765281c47937038a1298901c734c365c83b46ccd1
+local     c75d66a4a732067017d10394c36a54441378f143df5a680c056e0f0814452112
+local     c99de4d18d5257ce3b5d22e1a11d6604de16670f6a7e81af8308d1cecb6f1b81
+local     c499bfe1a60653eb19097a1efdf70e5b7b9044f6993a0432acca8ac8a22fe5f6
+local     c2632f9b7ac8725bd8596d53a6ae123b192c673255b0b9c1773b4cc715c760ac
+local     c8408e1310dae0d918e090cb0206ab1f8bdddbfeb749b2f6b42aba0c2983eb65
+local     ca88d62b99bd4a1a719a55805ec9b766a88432e01067acf361d28c64abd5d93e
+local     caa476ead65d09eebddd85fc75c8625768012233b26b13adf348e85c87a73688
+local     ce911ed00bbd48a7dc26b9add11c5fa2e605b2ace7125bcb2bf314742c6d1904
+local     cfda16ce6de873956661d285f7a644bdcc1411496070041916cd8775249b926e
+local     chat-app_ghost-data
+local     chat-app_grafana-data
+local     chat-app_mongo-data
+local     chat-app_neworbit-logs
+local     chat-app_prometheus-data
+local     d0c87ad18fdbab7481569fa1e4c2d481d52d57441de6b560733414e511c3b901
+local     d2cdc590b9d7ae2f2b7fa3f5a5846fd170f8db831df78ed386842a95a5c33e78
+local     d6ef6ccb54f350bbe1a1d40c1e3dd7531c65e68ae31cee1a34db890f1a1d7a7d
+local     d7ed53d73ed435735a5595bb240047ddd26d192f98a72b369493a4776c07e138
+local     d8cdf3bd203aa038b1e923614e5fa7958e928baf2b7dba4037af7302352cf252
+local     d8f8e8b7520f99883c6b7a419e71c2afba8368ca2f69966552b4d99a858a7404
+local     d36b75f4a37dba772ebf35685e2a206a08362d74df87815768da61f69b818a38
+local     d501b1573a34ee227ec8785b0cd7a072c2f8b2b81c1cf55612d67815a492d67c
+local     d35090d03dfacce923fa7c6c33d2b5492d42a8256be31da5042f9b7b59a61e1b
+local     daedba17c4fa49bc6a0b54e653062ae1ed701bd2f2e6f5af3c87956ef378a5e3
+local     e3baea5ec334c66b3220647dcf91c87e8a0ea29721734b8f1af87ce2e9dcc99e
+local     e6f5af86617e96b124ed4dd769950120f74f2f1522d8350c8cd2d1375e7b9375
+local     e35d8d4ef72d378e93fc1789f55f00f234bae73744de1be67986b745c4143a52
+local     e81b640f835f3b736c3d5cccff16d6df1c4f475da31d3bfa9ca929337556c600
+local     e0336af45e8d174a9c8152f98cc2bd261fff508494846d5eac0b6fd7d01a13fa
+local     ea85b54c83907e6b8f40147cc57189ff8e319ee0ca25377f0bd816bb85b1d85d
+local     ead4be05f037e8192ed5fa60931c72bf5dd4e4f2e4a319c17a4f26d06498a048
+local     eb4bd9303f19b87cfdabf44504a1440e24a1ea25ff3e3c6566a45ffddede011a
+local     ec09440df3a6fcb8f97b87b2cded710b120b6dbdf49a0f3507234c185ae7171c
+local     eccbd0a7421a232d9e7c532e9bbded7b58a488f0fb4389e600d506c954ed1f86
+local     ed5f8802b9a1d8b9f3052270afb0662b1cabc3f8c8e95ffdc1e77c94d7da9d08
+local     ed01916dd2024ff3af863e2aec3df2935ccc96741207e27273cb76673537d0ba
+local     f1a9e714e2e0dcca313b255db897fe618282f65c83343e67a4513d96628ff72d
+local     f1dd47a82eb733e581869643f4f4c322487da5d3e60890599caece50338d7ac0
+local     f27e489cfb4094ee3352af5be7ff4210eb142eea3fcdbba80058429430090526
+local     f50a370a12f6dd589156b8eb9781d2354d83b3257397efa97680bbfc438601e0
+local     f51ff9206249e5d39ad9e6909bda3104d52311c5d20f377fc246f36ba95127b3
+local     f58bb04f84904a9c271d8a5d6f69e0b3dcd2a2c3e0400ca8765f5b4da3b6eed0
+local     f94e9fdb35a5adf660d4e0b4c158421b9542c14fb50a34bbd78ce7c115107f9e
+local     f98cdebf2228e482ab7252f6aa3c4d8838aa40cdc2479e0ab5d774a51fc6debf
+local     f696c378c388898e066586e7a45a6e5b0659b0b95ae5eef7c8b5a7c13a323a66
+local     f0983fd459d97aa02d70a22127361b095ee926d766350b477668069504d2e1e6
+local     f9168afb76728417bc1886629a89fbb78caf7da2c6a23a7fde9a0e0eb9b1d6ce
+local     fa20a8d2a1094df4d0618ef93336a19c55bf696fdcac91fb062f97e0054570eb
+local     fade6f6ac2f71d24d9aec4b79b1fd4d99ce8c32556b3944ba5806d9d075b9e09
+local     fba9a7d06b588498d30ab1caf2e40c91c0547adde669eb6ad5a979ac11432ef6
+local     fba88a401bef2fcdc60d1477e4cc3f1b6cff5f520437c599a97dd4a5d6475875
+local     fc8f8ac6d37f5dfc38cc070427f457c8a257d762a913eb81bf1146cd46ad969b
+local     fcfaa443f77d53d33e476a10e760b93c0beb55eeb4ca5171539e62a5274bcea5
+local     fd8ccac988740416a077e2c80f76912106d9267d708f52779120e08fbcae9e03
+local     fda280e1cc810390f4fe592283412e12635ae55bb1e58c2015632137330ee8cb
+local     feb75f6f2d24c22718dac88ab8fe54c1db62235e9ea12b24f8d0071900b4e420
+---
+
+=== 6. Docker 이미지 ===
+REPOSITORY                        TAG         SIZE
+chat-app_blog-scheduler           latest      159MB
+chat-app_app                      latest      683MB
+chat-app_log-viewer               latest      135MB
+chat-app_daily-report             latest      14MB
+chat-app_blog-agent               latest      149MB
+nginx                             latest      161MB
+ghost                             5-alpine    634MB
+axllent/mailpit                   latest      35MB
+mongo                             latest      923MB
+node                              20-alpine   135MB
+redis                             alpine      94.7MB
+grafana/grafana                   latest      747MB
+prom/prometheus                   latest      367MB
+gcr.io/cadvisor/cadvisor          latest      75.1MB
+prom/node-exporter                latest      25.7MB
+alpine                            3.19        7.4MB
+nginx/nginx-prometheus-exporter   latest      14.4MB
+node                              18-alpine   127MB
+
+=== 7. 블로그/로그 디렉터리 ===
+
+=== 8. SQLite 설치 여부 ===
+sqlite3 미설치
+
+=== 9. Node/npm (호스트, 컨테이너 아님) ===
+node 미설치
+npm 미설치
+
+==============================================
+결과 저장: /home/ubuntu/lightsail_env_report_20260220_115530.txt
+==============================================
+
+>>> 결과 파일: /home/ubuntu/lightsail_env_report_20260220_115530.txt
