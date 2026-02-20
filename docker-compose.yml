@@ -32,12 +32,11 @@ services:
       - ./ssl:/etc/nginx/ssl:ro
     depends_on:
       - app
-      - grafana
       - ghost
       - log-viewer
 
   mongo:
-    image: mongo:latest
+    image: mongo:7-alpine
     container_name: mongo
     restart: always
     volumes:
@@ -48,12 +47,14 @@ services:
     container_name: redis
     restart: always
 
-  # ============ 모니터링 스택 ============
+  # ============ 모니터링 스택 (기본 비기동, 필요 시 --profile monitoring) ============
 
   prometheus:
     image: prom/prometheus:latest
     container_name: prometheus
     restart: always
+    profiles:
+      - monitoring
     ports:
       - "9090:9090"
     volumes:
@@ -69,6 +70,8 @@ services:
     image: grafana/grafana:latest
     container_name: grafana
     restart: always
+    profiles:
+      - monitoring
     ports:
       - "3001:3000"
     environment:
@@ -84,6 +87,8 @@ services:
     image: prom/node-exporter:latest
     container_name: node-exporter
     restart: always
+    profiles:
+      - monitoring
     ports:
       - "9100:9100"
     volumes:
@@ -100,6 +105,8 @@ services:
     image: gcr.io/cadvisor/cadvisor:latest
     container_name: cadvisor
     restart: always
+    profiles:
+      - monitoring
     ports:
       - "8080:8080"
     volumes:
@@ -113,6 +120,8 @@ services:
     image: nginx/nginx-prometheus-exporter:latest
     container_name: nginx-exporter
     restart: always
+    profiles:
+      - monitoring
     ports:
       - "9113:9113"
     command:
@@ -126,6 +135,8 @@ services:
       dockerfile: Dockerfile.cron
     container_name: daily-report
     restart: always
+    profiles:
+      - monitoring
     volumes:
       - ./data/logs:/var/log/neworbit
     depends_on:

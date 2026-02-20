@@ -47,13 +47,14 @@ MongoDB는 이미 `mongo` 컨테이너로 떠 있으므로 별도 설치·기동
 ```bash
 cd /home/ubuntu/chat-app
 
-# docker-compose 사용 시
 docker-compose down
 docker-compose up -d
+```
 
-# 또는 docker-compose (구문)
-docker-compose down
-docker-compose up -d
+**참고**: Grafana·Prometheus·cadvisor·node-exporter·nginx-exporter·daily-report는 `monitoring` 프로파일로 분리되어 있어 기본 `up -d` 시 기동되지 않습니다. 필요 시:
+
+```bash
+docker-compose --profile monitoring up -d
 ```
 
 ---
@@ -110,11 +111,23 @@ ls -la lightsail_env_report_*.txt
 
 ---
 
-## 7. 자주 쓰는 명령 요약
+## 7. 메모리 사용량 점검
+
+```bash
+cd /home/ubuntu/chat-app
+docker stats --no-stream --format "table {{.Name}}\t{{.MemUsage}}\t{{.MemPerc}}"
+```
+
+서비스별 용도·절감 방법은 [MEMORY_AUDIT.md](MEMORY_AUDIT.md) 참고.
+
+---
+
+## 8. 자주 쓰는 명령 요약
 
 | 목적 | 명령 |
 |------|------|
 | 프로젝트 이동 | `cd /home/ubuntu/chat-app` |
+| 메모리 사용량 확인 | `docker stats --no-stream --format "table {{.Name}}\t{{.MemUsage}}\t{{.MemPerc}}"` |
 | 블로그 스케줄러 재시작 | `docker-compose up -d blog-scheduler` |
 | 블로그 로그 보기 | `docker logs blog-scheduler --tail 100` |
 | 전체 컨테이너 상태 | `docker ps -a` |
@@ -123,7 +136,7 @@ ls -la lightsail_env_report_*.txt
 
 ---
 
-## 8. 참고 경로 (LIGHTSAIL_SERVER.md 기준)
+## 9. 참고 경로 (LIGHTSAIL_SERVER.md 기준)
 
 | 용도 | 경로 |
 |------|------|
