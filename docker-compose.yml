@@ -36,7 +36,7 @@ services:
       - log-viewer
 
   mongo:
-    image: mongo:7-alpine
+    image: mongo:7
     container_name: mongo
     restart: always
     volumes:

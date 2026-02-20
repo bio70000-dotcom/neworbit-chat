@@ -3,7 +3,7 @@
 실제 사용량은 서버에서 `docker stats`로 확인하는 것이 정확합니다. 아래는 서비스별 용도·예상 메모리·줄일 수 있는지 정리한 점검표입니다.
 
 **적용된 변경**
-- **MongoDB**: `mongo:latest` → `mongo:7-alpine` (이미지·런타임 경량화)
+- **MongoDB**: `mongo:latest` → `mongo:7` (버전 고정). 참고: 공식 이미지는 7용 Alpine 태그를 제공하지 않음(`mongo:7-alpine` 없음).
 - **모니터링 스택**: Grafana, Prometheus, node-exporter, cadvisor, nginx-exporter, daily-report는 `profiles: [monitoring]`로 분리. 기본 `docker-compose up -d` 시 기동 안 함. 필요 시 `docker-compose --profile monitoring up -d`로 별도 기동 가능.
 
 ---
@@ -32,7 +32,7 @@ docker stats --no-stream --format "table {{.Name}}\t{{.MemUsage}}\t{{.MemPerc}}"
 
 | 서비스 | 용도 | 예상 메모리(대략) | 줄일 수 있음? |
 |--------|------|-------------------|----------------|
-| **mongo** | 채팅·블로그 DB | 200~500MB+ | 예 — Alpine 이미지로 교체 |
+| **mongo** | 채팅·블로그 DB | 200~500MB+ | 제한적 — 공식 이미지에 7-alpine 없음, `mongo:7` 사용 중 |
 | **chat-app** | 채팅 앱 (Node) | 100~300MB | 예 — NODE_OPTIONS 힙 상한 |
 | **grafana** | 대시보드·그래프 | 150~300MB | 예 — mem_limit 또는 필요 시만 기동 |
 | **ghost** | 블로그 CMS | 100~200MB | 이미 alpine, 추가로 mem_limit |
