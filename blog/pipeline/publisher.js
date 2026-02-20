@@ -191,13 +191,16 @@ async function publish(post) {
     }
   }
 
-  // 2-2. Pexels 실사 이미지 (업로드 없이 외부 URL 직접 삽입 → Pexels CDN에서 서빙)
+  // 2-2. 실사 이미지 (Unsplash / Pexels, 업로드 없이 외부 URL 직접 삽입)
   if (post.pexelsImages && post.pexelsImages.length > 0) {
     for (const pImg of post.pexelsImages) {
+      const isUnsplash = pImg.source === 'unsplash';
+      const creditLink = isUnsplash ? (pImg.creditUrl || 'https://unsplash.com') : (pImg.pexelsUrl || 'https://www.pexels.com');
+      const creditLabel = isUnsplash ? 'Unsplash' : 'Pexels';
       allImages.push({
-        html: `<figure><img src="${pImg.url}" alt="${pImg.alt}" loading="lazy" /><figcaption>Photo by ${pImg.photographer} on <a href="${pImg.pexelsUrl}" target="_blank" rel="noopener">Pexels</a></figcaption></figure>`,
+        html: `<figure><img src="${pImg.url}" alt="${pImg.alt}" loading="lazy" /><figcaption>Photo by ${pImg.photographer} on <a href="${creditLink}" target="_blank" rel="noopener">${creditLabel}</a></figcaption></figure>`,
       });
-      console.log(`[Publisher] Pexels 이미지 삽입: ${pImg.photographer}`);
+      console.log(`[Publisher] ${creditLabel} 이미지 삽입: ${pImg.photographer}`);
     }
   }
 

@@ -139,13 +139,27 @@ Suitable for a Korean lifestyle blog article.`;
   }
   const bodyImages = bodyImage ? [bodyImage] : [];
 
-  // 3. Pexels 실사 이미지 2장
+  // 3. 실사 이미지 2장: Unsplash 먼저, 부족분은 Pexels
+  const STOCK_COUNT = 2;
   let pexelsImages = [];
   try {
-    const { searchRelevantPhotos } = require('../utils/pexelsSearch');
-    pexelsImages = await searchRelevantPhotos(bodyHtml, keyword, 2);
+    const unsplashSearch = require('../utils/unsplashSearch');
+    const pexelsSearch = require('../utils/pexelsSearch');
+    const unsplashResults = await unsplashSearch.searchRelevantPhotos(bodyHtml, keyword, STOCK_COUNT);
+    pexelsImages = [...unsplashResults];
+    if (pexelsImages.length < STOCK_COUNT) {
+      const need = STOCK_COUNT - pexelsImages.length;
+      const usedUrls = new Set(pexelsImages.map((p) => p.url));
+      const pexelsResults = await pexelsSearch.searchRelevantPhotos(bodyHtml, keyword, need);
+      for (const p of pexelsResults) {
+        if (pexelsImages.length >= STOCK_COUNT) break;
+        if (usedUrls.has(p.url)) continue;
+        usedUrls.add(p.url);
+        pexelsImages.push({ ...p, source: 'pexels' });
+      }
+    }
   } catch (e) {
-    console.warn(`[ImageGen] Pexels 검색 실패: ${e.message}`);
+    console.warn(`[ImageGen] 실사 이미지 검색 실패: ${e.message}`);
   }
 
   console.log(`[ImageGen] 생성 완료: 썸네일 ${thumbnail ? 'O' : 'X'}, AI ${bodyImages.length}장, 실사 ${pexelsImages.length}장`);

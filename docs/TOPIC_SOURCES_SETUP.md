@@ -23,6 +23,10 @@
 - **환경 변수**: `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET`
 - **언론사 목록**: `blog/config/publisherDomains.json` 에서 도메인 추가/삭제로 관리.
 
+## 블로그 본문 실사 이미지
+
+- **실사 이미지**: Unsplash 우선, 부족 시 Pexels. 환경 변수: `UNSPLASH_ACCESS_KEY` ( [Unsplash Developers](https://unsplash.com/developers) 에서 Access Key 발급 ), `PEXELS_API_KEY`.
+
 ## GitHub Secrets 추가 안내
 
 | Secret 이름 | 필수 | 설명 |
