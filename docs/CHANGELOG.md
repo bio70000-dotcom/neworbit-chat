@@ -4,6 +4,15 @@ Neworbit Chat + 자동 블로그 스택의 주요 개발·변경 사항 요약. 
 
 ---
 
+## 2026-02-21
+
+- **스케줄러**: topicSelector `plan` 중복 선언 제거(SyntaxError 수정), formatDailyReport·보고 전송 방어/예외 처리.
+- **MongoDB**: FCV 8.2 데이터 호환을 위해 이미지 `mongo:7` → `mongo:8`. [SERVER_COMMANDS.md](SERVER_COMMANDS.md)에 MongoDB 이미지 갱신 절차 및 `docker-compose`(하이푈) 안내 추가.
+- **AI 주제 선정**: JSON 파싱·raw 배열 우선 추출 강화, maxOutputTokens 8192, 실패 로그 보강. ([2026-02-21.md](2026-02-21.md))
+- **본문 이미지**: docker-compose에 `UNSPLASH_ACCESS_KEY` 전달 추가 → Unsplash 우선, 부족분 Pexels 동작.
+
+---
+
 ## 인프라·운영
 
 ### 메모리 절감 (Lightsail 2GB → 1GB 대비)
