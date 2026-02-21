@@ -6,9 +6,38 @@
 const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
 const MODEL = 'gemini-2.5-flash';
 
-async function callGemini(prompt, maxTokens = 4096) {
+/** 주제 선정 응답을 배열로 강제하기 위한 JSON Schema (responseJsonSchema용) */
+const TOPIC_SELECTION_RESPONSE_SCHEMA = {
+  type: 'array',
+  items: {
+    type: 'object',
+    properties: {
+      writerId: { type: 'string', description: 'dalsanchek | textree | bbittul' },
+      keyword: { type: 'string', description: '후보 풀의 키워드 그대로' },
+      source: { type: 'string', description: '소스 태그' },
+      rationale: { type: 'string', description: '선정 이유 한 줄' },
+    },
+    required: ['writerId', 'keyword', 'source', 'rationale'],
+  },
+  minItems: 6,
+  maxItems: 6,
+};
+
+/**
+ * @param {string} prompt
+ * @param {number} [maxTokens=4096]
+ * @param {{ responseJsonSchema?: object }} [extraConfig] - generationConfig에 병합 (예: responseJsonSchema로 배열 출력 강제)
+ */
+async function callGemini(prompt, maxTokens = 4096, extraConfig = {}) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error('GEMINI_API_KEY가 설정되지 않았습니다');
+
+  const generationConfig = {
+    maxOutputTokens: maxTokens,
+    temperature: 0.3,
+    responseMimeType: 'application/json',
+    ...extraConfig,
+  };
 
   const url = `${GEMINI_BASE_URL}/models/${MODEL}:generateContent?key=${apiKey}`;
   const controller = new AbortController();
@@ -20,11 +49,7 @@ async function callGemini(prompt, maxTokens = 4096) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: {
-          maxOutputTokens: maxTokens,
-          temperature: 0.3,
-          responseMimeType: 'application/json',
-        },
+        generationConfig,
       }),
       signal: controller.signal,
     });
@@ -165,18 +190,47 @@ function normalizeKeywordForMatch(str) {
   return str.replace(/\s+/g, ' ').replace(/[.．…]+$/g, '').trim();
 }
 
+/** AI가 반환한 키워드에서 매체명 접미사 제거 (예: "제목 - KBS 뉴스" → "제목") */
+function stripMediaSuffix(keyword) {
+  if (!keyword || typeof keyword !== 'string') return '';
+  const t = keyword.trim();
+  const idx = t.lastIndexOf(' - ');
+  return idx > 0 ? t.slice(0, idx).trim() : t;
+}
+
+/** 따옴표·공백 정규화 후 비교용 문자열 */
+function normalizeForCompare(str) {
+  if (!str || typeof str !== 'string') return '';
+  return str
+    .replace(/\s+/g, ' ')
+    .replace(/[''"`]/g, "'")
+    .replace(/[.．…]+$/g, '')
+    .trim();
+}
+
 function findBestMatchCandidate(selKeyword, candidatesPool, usedKeywords) {
-  const norm = normalizeKeywordForMatch(selKeyword);
-  if (!norm) return null;
+  const raw = (selKeyword || '').trim();
+  const withoutMedia = stripMediaSuffix(raw);
+  const norm = normalizeKeywordForMatch(raw);
+  const normNoMedia = normalizeKeywordForMatch(withoutMedia);
+  const compareSel = normalizeForCompare(raw);
+  const compareSelNoMedia = normalizeForCompare(withoutMedia);
+  if (!norm && !normNoMedia) return null;
 
   for (const c of candidatesPool) {
     if (usedKeywords.has(c.keyword)) continue;
 
     const poolKey = (c.keyword || '').trim();
     const poolNorm = normalizeKeywordForMatch(poolKey);
+    const poolCompare = normalizeForCompare(poolKey);
 
     if (poolNorm === norm || poolKey === norm) return c;
+    if (poolNorm === normNoMedia || poolKey === normNoMedia) return c;
+    if (poolCompare === compareSel || poolCompare === compareSelNoMedia) return c;
     if (poolKey.length > 2 && (poolNorm.includes(norm) || norm.includes(poolNorm))) return c;
+    if (poolKey.length > 2 && (poolNorm.includes(normNoMedia) || normNoMedia.includes(poolNorm))) return c;
+    if (poolKey.length > 10 && compareSelNoMedia.length >= 8 && poolCompare.includes(compareSelNoMedia)) return c;
+    if (poolKey.length > 10 && compareSel.length >= 8 && poolCompare.includes(compareSel)) return c;
   }
   return null;
 }
@@ -274,9 +328,11 @@ ${formattedCandidates}
 
   let rawResponse;
   try {
-    rawResponse = await callGemini(prompt);
+    rawResponse = await callGemini(prompt, 4096, {
+      responseJsonSchema: TOPIC_SELECTION_RESPONSE_SCHEMA,
+    });
   } catch (e) {
-    return { plan: null, error: `Gemini 호출 실패: ${e.message}` };
+    return { plan: null, error: `Gemini 호출 실패: ${e.message}`, apiError: true };
   }
 
   // 디버깅용: 매 호출마다 raw 응답 본문 출력

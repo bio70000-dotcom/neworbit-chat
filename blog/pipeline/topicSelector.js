@@ -368,14 +368,30 @@ async function selectDailyTopicsWithQuota(writers, postsPerWriter = 2) {
     return selectDailyTopicsWithQuotaFallback(writers, postsPerWriter);
   }
   await enrichPoolWithSearchVolume(pool);
-  const result = await selectTopicsWithAI(pool, writers);
-  const plan = result?.plan;
-  if (!plan || plan.every((p) => p.topics.length === 0)) {
-    const errMsg = result?.error || '(원인 없음)';
-    console.warn('[TopicSelector] AI 선정 실패 → fallback 사용. 사유:', errMsg);
+  const maxRetries = 2;
+  const retryDelayMs = 1500;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const result = await selectTopicsWithAI(pool, writers);
+    const plan = result?.plan;
+
+    if (plan && !plan.every((p) => p.topics.length === 0)) return plan;
+
+    if (result?.apiError === true) {
+      console.warn('[TopicSelector] Gemini API 오류 → fallback 사용. 사유:', result?.error || '(원인 없음)');
+      return selectDailyTopicsWithQuotaFallback(writers, postsPerWriter);
+    }
+
+    if (attempt < maxRetries) {
+      const errMsg = result?.error || '(원인 없음)';
+      console.warn('[TopicSelector] AI 선정 실패(JSON/매칭), 재시도', attempt + 1, '/', maxRetries, '-', errMsg);
+      await new Promise((r) => setTimeout(r, retryDelayMs));
+      continue;
+    }
+
+    console.warn('[TopicSelector] 재시도 소진 후에도 plan 없음 → fallback 사용. 사유:', result?.error || '(원인 없음)');
     return selectDailyTopicsWithQuotaFallback(writers, postsPerWriter);
   }
-  return plan;
 }
 
 /**
