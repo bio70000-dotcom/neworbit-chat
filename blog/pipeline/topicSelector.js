@@ -384,9 +384,9 @@ async function selectDailyTopicsWithQuota(writers, postsPerWriter = 2) {
       const reason = result?.error || 'Gemini API 오류';
       console.warn('[TopicSelector] FALLBACK_REASON=', reason);
       console.warn('[TopicSelector] Gemini API 오류 → fallback 사용. 사유:', reason);
-      const plan = await selectDailyTopicsWithQuotaFallback(writers, postsPerWriter);
-      plan.aiFailureReason = reason;
-      return plan;
+      const fallbackPlan = await selectDailyTopicsWithQuotaFallback(writers, postsPerWriter);
+      fallbackPlan.aiFailureReason = reason;
+      return fallbackPlan;
     }
 
     if (attempt < maxRetries) {
@@ -399,9 +399,9 @@ async function selectDailyTopicsWithQuota(writers, postsPerWriter = 2) {
     const reason = result?.error || '재시도 소진';
     console.warn('[TopicSelector] FALLBACK_REASON=', reason);
     console.warn('[TopicSelector] 재시도 소진 후에도 plan 없음 → fallback 사용. 사유:', reason);
-    const plan = await selectDailyTopicsWithQuotaFallback(writers, postsPerWriter);
-    plan.aiFailureReason = reason;
-    return plan;
+    const fallbackPlan = await selectDailyTopicsWithQuotaFallback(writers, postsPerWriter);
+    fallbackPlan.aiFailureReason = reason;
+    return fallbackPlan;
   }
 }
 

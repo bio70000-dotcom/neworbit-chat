@@ -422,8 +422,20 @@ async function dailyCycle(opts = {}) {
     let plan = await selectDailyTopics();
 
     // 2. 텔레그램 보고
-    const reportMsg = formatDailyReport(plan, dateStr);
-    await sendMessage(reportMsg);
+    let reportMsg;
+    try {
+      reportMsg = formatDailyReport(plan, dateStr);
+    } catch (e) {
+      console.error('[Scheduler] formatDailyReport 예외:', e.message, e.stack);
+      serverLog('formatDailyReport.error', { error: e.message });
+      reportMsg = `(보고 생성 실패: ${(e.message || '').slice(0, 80)})\n${dateStr}`;
+    }
+    try {
+      await sendMessage(reportMsg);
+    } catch (e) {
+      console.error('[Scheduler] 보고 전송 실패:', e.message);
+      serverLog('sendReport.error', { error: e.message });
+    }
     console.log('[Scheduler] 텔레그램 보고 완료, 승인 대기...');
 
     // 3. 1차 승인 루프 (주제만)

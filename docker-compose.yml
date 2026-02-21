@@ -36,7 +36,8 @@ services:
       - log-viewer
 
   mongo:
-    image: mongo:7
+    # 데이터 볼륨이 FCV 8.2로 기록된 경우 7.x는 기동 불가 → 8 사용
+    image: mongo:8
     container_name: mongo
     restart: always
     volumes:

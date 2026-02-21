@@ -371,6 +371,10 @@ async function downloadPhoto(fileId) {
  * @param {number[]|null} changedNumbers 변경된 번호들 (재선정 시)
  */
 function formatDailyReport(plan, dateStr, changedNumbers = null) {
+  if (!Array.isArray(plan) || plan.length === 0) {
+    return `(플랜 데이터 없음)\n${dateStr}`;
+  }
+
   const writerIcons = {
     dalsanchek: '달산책',
     textree: '텍스트리',
