@@ -81,15 +81,21 @@ function removeTrailingCommas(jsonStr) {
 function safeParseJSON(raw) {
   if (raw == null || typeof raw !== 'string') return null;
   let s = raw.replace(/^\uFEFF/, '').trim();
+  s = s.replace(/\r\n/g, '\n').replace(/\r/g, '');
   s = s.replace(/```json/gi, '').replace(/```/g, '').trim();
   const firstBrace = s.search(/[\[{]/);
   if (firstBrace > 0) s = s.slice(firstBrace);
-  for (const candidate of [s, removeTrailingCommas(s), s.replace(/\r\n/g, '\n')]) {
+  const candidates = [
+    s,
+    removeTrailingCommas(s),
+    removeTrailingCommas(s.replace(/\n/g, ' ')),
+  ];
+  for (const candidate of candidates) {
     try {
       return JSON.parse(candidate);
     } catch (_) {}
   }
-  console.error('[TopicSelectAI] JSON 파싱 실패 raw 앞 150자:', raw.slice(0, 150));
+  console.error('[TopicSelectAI] JSON 파싱 실패 raw 앞 200자:', raw.slice(0, 200));
   return null;
 }
 
@@ -155,6 +161,9 @@ function extractSelectionsArray(parsedData, rawResponse) {
     'items',
     'topic_selections',
     'topicSelections',
+    'content',
+    'response',
+    'array',
   ];
   if (parsedData && typeof parsedData === 'object') {
     for (const key of objectKeys) {
@@ -317,9 +326,9 @@ ${formattedCandidates}
 2. **복사 필수:** 선정된 주제의 'keyword'는 후보 풀에 적힌 텍스트를 **절대 수정하지 말고 그대로** 사용하라.
 3. **중복 금지:** 6개의 주제는 모두 달라야 한다.
 4. **rationale:** rationale 필드에는 **해당 작가의 전문분야·성향에 이 주제가 맞는 이유**를 한 줄로 구체적으로 작성하라 (예: 달산책의 여행·힐링 성향에 부합, 삐뚤빼뚤의 트렌드·엔터 영역에 맞는 주제).
-5. **결과물:** 반드시 JSON 배열만 출력하라. 객체로 감싸지 말고, 설명이나 접두 문장 없이 응답 전체가 \`[\` 로 시작하는 배열 하나만 출력할 것. (마크다운 없이 JSON만)
+5. **결과물:** 응답은 반드시 **JSON 배열 하나뿐**이어야 한다. 설명·접두 문장·마크다운 코드블록 없이, 응답 전체가 \`[\` 로 시작해 \`]\` 로 끝나는 배열만 출력할 것.
 
-## 응답 형식 (JSON Array)
+## 응답 형식 (JSON Array만 출력)
 [
   { "writerId": "dalsanchek", "keyword": "후보 풀에 있는 키워드 그대로 복사", "source": "Naver_Dalsanchek 또는 Google_News_건강 등", "rationale": "해당 작가 전문분야·성향에 맞는 이유 한 줄" },
   ... (총 6개 객체)
@@ -328,7 +337,7 @@ ${formattedCandidates}
 
   let rawResponse;
   try {
-    rawResponse = await callGemini(prompt, 4096, {
+    rawResponse = await callGemini(prompt, 8192, {
       responseJsonSchema: TOPIC_SELECTION_RESPONSE_SCHEMA,
     });
   } catch (e) {
@@ -338,18 +347,31 @@ ${formattedCandidates}
   // 디버깅용: 매 호출마다 raw 응답 본문 출력
   console.warn('[TopicSelectAI] Gemini raw 응답 본문 (길이 %d):\n%s', rawResponse?.length ?? 0, rawResponse ?? '(null)');
 
-  const parsedData = safeParseJSON(rawResponse);
-  const selectionsArray = extractSelectionsArray(parsedData, rawResponse);
+  // 1) raw에서 [ ] 균형으로 배열 구간만 잘라 파싱 시도 (접두 문장/마크다운 있어도 동작)
+  let selectionsArray = null;
+  const arraySlice = rawResponse ? extractArraySliceFromRaw(rawResponse) : null;
+  if (arraySlice) {
+    const fixed = removeTrailingCommas(arraySlice);
+    const parsed = safeParseJSON(fixed);
+    if (Array.isArray(parsed) && parsed.length >= 6) selectionsArray = parsed;
+  }
+  // 2) 실패 시 기존: 전체 파싱 후 객체 내 배열 또는 raw 재시도
+  if (!selectionsArray || !Array.isArray(selectionsArray)) {
+    const parsedData = safeParseJSON(rawResponse);
+    selectionsArray = extractSelectionsArray(parsedData, rawResponse);
+  }
 
   if (!selectionsArray || !Array.isArray(selectionsArray)) {
+    const sliceFromRaw = rawResponse ? extractArraySliceFromRaw(rawResponse) : null;
     console.warn('[TopicSelectAI] FAILURE_TYPE=JSON_PARSE');
-    console.warn('[TopicSelectAI] 배열 추출 실패. raw 앞 200자:', rawResponse?.slice(0, 200));
+    console.warn('[TopicSelectAI] 배열 추출 실패. raw 길이=%s, slice추출=%s', rawResponse?.length ?? 0, sliceFromRaw ? sliceFromRaw.length + '자' : 'null');
+    console.warn('[TopicSelectAI] raw 앞 300자:', rawResponse?.slice(0, 300));
     if (parsedData != null) {
       console.warn(
         '[TopicSelectAI] parsedData: typeof=%s, isArray=%s, keys=%s',
         typeof parsedData,
         Array.isArray(parsedData),
-        typeof parsedData === 'object' ? Object.keys(parsedData).slice(0, 10).join(',') : '-'
+        typeof parsedData === 'object' ? Object.keys(parsedData).slice(0, 15).join(',') : '-'
       );
     }
     return { plan: null, error: 'AI 응답이 JSON 배열 형식이 아닙니다.' };

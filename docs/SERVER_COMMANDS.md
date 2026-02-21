@@ -1,7 +1,8 @@
 # 서버에서 수행할 작업 — 명령어 안내
 
 Lightsail 서버 구조는 [LIGHTSAIL_SERVER.md](LIGHTSAIL_SERVER.md) 기준입니다.  
-**프로젝트 루트**: `/home/ubuntu/chat-app`
+**프로젝트 루트**: `/home/ubuntu/chat-app`  
+**Compose 명령**: 이 서버는 `docker-compose`(하이픈) 사용. `docker compose`(공백)는 미지원.
 
 ---
 
@@ -39,6 +40,27 @@ docker logs blog-scheduler --tail 50
 
 MongoDB는 이미 `mongo` 컨테이너로 떠 있으므로 별도 설치·기동 없음.  
 블로그는 `mongodb://mongo:27017/blog` 에 접속하며, `blog` DB·컬렉션은 최초 사용 시 자동 생성됨.
+
+---
+
+## 2-1. MongoDB 이미지만 갱신 (예: mongo:7 → mongo:8)
+
+`docker-compose.yml`에서 mongo 이미지 태그만 바뀐 경우(FCV 호환 등). 프로젝트 루트에서 실행.
+
+```bash
+cd /home/ubuntu/chat-app
+
+# 최신 코드 반영 (이미지 태그가 바뀌었으면)
+git pull
+
+# mongo 이미지 받고 컨테이너만 재생성
+docker-compose pull mongo
+docker-compose up -d mongo
+
+# 기동 확인
+docker ps --filter name=mongo
+docker logs mongo --tail 20
+```
 
 ---
 
@@ -127,6 +149,7 @@ docker stats --no-stream --format "table {{.Name}}\t{{.MemUsage}}\t{{.MemPerc}}"
 | 목적 | 명령 |
 |------|------|
 | 프로젝트 이동 | `cd /home/ubuntu/chat-app` |
+| MongoDB 이미지만 갱신 | `cd /home/ubuntu/chat-app` 후 `docker-compose pull mongo` → `docker-compose up -d mongo` |
 | 메모리 사용량 확인 | `docker stats --no-stream --format "table {{.Name}}\t{{.MemUsage}}\t{{.MemPerc}}"` |
 | 블로그 스케줄러 재시작 | `docker-compose up -d blog-scheduler` |
 | 블로그 로그 보기 | `docker logs blog-scheduler --tail 100` |
