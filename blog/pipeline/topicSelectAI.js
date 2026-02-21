@@ -46,14 +46,18 @@ async function callGemini(prompt, maxTokens = 4096) {
   }
 }
 
-/** JSON 파싱 헬퍼. 마크다운 코드 블록이 있어도 벗겨내고 파싱 */
+/** JSON 파싱 헬퍼. 접두 설명문 제거, 마크다운 코드 블록 제거 후 파싱 */
 function safeParseJSON(raw) {
+  if (raw == null || typeof raw !== 'string') return null;
+  let s = raw.replace(/^\uFEFF/, '').trim();
+  s = s.replace(/```json/gi, '').replace(/```/g, '').trim();
+  const firstBrace = s.search(/[\[{]/);
+  if (firstBrace > 0) s = s.slice(firstBrace);
   try {
-    return JSON.parse(raw);
+    return JSON.parse(s);
   } catch (e) {
-    const cleaned = raw.replace(/```json/gi, '').replace(/```/g, '').trim();
     try {
-      return JSON.parse(cleaned);
+      return JSON.parse(s.trim());
     } catch (e2) {
       console.error('[TopicSelectAI] JSON 파싱 실패 raw:', raw.slice(0, 100));
       return null;
@@ -61,14 +65,63 @@ function safeParseJSON(raw) {
   }
 }
 
-/** 파싱 결과 또는 raw에서 선정 배열 추출. 객체로 감싼 경우/앞뒤 설명문 대비 */
+/** raw 문자열에서 괄호 균형으로 첫 번째 JSON 배열 구간 추출 (문자열 내 ] 대비) */
+function extractArraySliceFromRaw(raw) {
+  if (!raw || typeof raw !== 'string') return null;
+  let i = raw.indexOf('[');
+  while (i !== -1) {
+    let depth = 1;
+    let inString = false;
+    let escape = false;
+    let quote = null;
+    for (let j = i + 1; j < raw.length; j++) {
+      const c = raw[j];
+      if (escape) {
+        escape = false;
+        continue;
+      }
+      if (inString) {
+        if (c === '\\') escape = true;
+        else if (c === quote) inString = false;
+        continue;
+      }
+      if (c === '"' || c === "'") {
+        inString = true;
+        quote = c;
+        continue;
+      }
+      if (c === '[') depth++;
+      else if (c === ']') {
+        depth--;
+        if (depth === 0) return raw.slice(i, j + 1);
+      }
+    }
+    i = raw.indexOf('[', i + 1);
+  }
+  return null;
+}
+
+/** 파싱 결과 또는 raw에서 선정 배열 추출. 객체 래퍼·한 단계 중첩·raw 괄호 균형 대비 */
 function extractSelectionsArray(parsedData, rawResponse) {
   if (Array.isArray(parsedData)) return parsedData;
+  const objectKeys = [
+    'selections',
+    'topics',
+    'data',
+    'choices',
+    'result',
+    'output',
+    'items',
+    'topic_selections',
+  ];
   if (parsedData && typeof parsedData === 'object') {
-    const candidates = ['selections', 'topics', 'data', 'choices'];
-    for (const key of candidates) {
+    for (const key of objectKeys) {
       const val = parsedData[key];
       if (Array.isArray(val)) return val;
+      if (val && typeof val === 'object' && !Array.isArray(val)) {
+        const nested = Object.values(val).find((v) => Array.isArray(v));
+        if (nested) return nested;
+      }
     }
     if (parsedData.choices?.[0]?.message?.content) {
       const inner = safeParseJSON(parsedData.choices[0].message.content);
@@ -78,10 +131,8 @@ function extractSelectionsArray(parsedData, rawResponse) {
     if (firstArray) return firstArray;
   }
   if (rawResponse && typeof rawResponse === 'string') {
-    const start = rawResponse.indexOf('[');
-    const end = rawResponse.lastIndexOf(']');
-    if (start !== -1 && end !== -1 && end > start) {
-      const slice = rawResponse.slice(start, end + 1);
+    const slice = extractArraySliceFromRaw(rawResponse);
+    if (slice) {
       const arr = safeParseJSON(slice);
       if (Array.isArray(arr)) return arr;
     }
@@ -147,7 +198,7 @@ ${formattedCandidates}
    - bbittul: 트렌드, 이슈, 재미 -> [Nate_Trend], [Naver_Bbittul], [Google_News_엔터테이먼트], [Google_News_스포츠], [Google_News_대한민국] 우선
 2. **복사 필수:** 선정된 주제의 'keyword'는 후보 풀에 적힌 텍스트를 **절대 수정하지 말고 그대로** 사용하라.
 3. **중복 금지:** 6개의 주제는 모두 달라야 한다.
-4. **결과물:** 반드시 아래 JSON 형식의 배열만 출력하라. (마크다운 없이 JSON만)
+4. **결과물:** 반드시 JSON 배열만 출력하라. 객체로 감싸지 말고, 설명이나 접두 문장 없이 응답 전체가 \`[\` 로 시작하는 배열 하나만 출력할 것. (마크다운 없이 JSON만)
 
 ## 응답 형식 (JSON Array)
 [
@@ -170,7 +221,15 @@ ${formattedCandidates}
   const selectionsArray = extractSelectionsArray(parsedData, rawResponse);
 
   if (!selectionsArray || !Array.isArray(selectionsArray)) {
-    console.warn('[TopicSelectAI] 응답이 배열이 아님:', rawResponse?.slice(0, 200));
+    console.warn('[TopicSelectAI] 배열 추출 실패. raw 앞 200자:', rawResponse?.slice(0, 200));
+    if (parsedData != null) {
+      console.warn(
+        '[TopicSelectAI] parsedData: typeof=%s, isArray=%s, keys=%s',
+        typeof parsedData,
+        Array.isArray(parsedData),
+        typeof parsedData === 'object' ? Object.keys(parsedData).slice(0, 10).join(',') : '-'
+      );
+    }
     return { plan: null, error: 'AI 응답이 JSON 배열 형식이 아닙니다.' };
   }
 
