@@ -313,6 +313,9 @@ async function getCandidatesPool(writers, postsPerWriter = 2) {
     wB ? getNaverTopicsByWriterQueries(wB, 3).catch((e) => { console.warn('[TopicSelector] 네이버(삐뚤빼뚤) 실패:', e.message); return []; }) : Promise.resolve([]),
     getGoogleNewsTopicsByCategory({ totalTarget: 10 }).catch((e) => { console.warn('[TopicSelector] 구글 뉴스 수집 실패:', e.message); return []; }),
   ]);
+  if (!googleNewsList || googleNewsList.length === 0) {
+    console.warn('[TopicSelector] 구글 뉴스 수집 결과 0건');
+  }
 
   const batches = [
     [nateList, 'nate_trend', 'Nate_Trend'],

@@ -61,6 +61,34 @@ function safeParseJSON(raw) {
   }
 }
 
+/** 파싱 결과 또는 raw에서 선정 배열 추출. 객체로 감싼 경우/앞뒤 설명문 대비 */
+function extractSelectionsArray(parsedData, rawResponse) {
+  if (Array.isArray(parsedData)) return parsedData;
+  if (parsedData && typeof parsedData === 'object') {
+    const candidates = ['selections', 'topics', 'data', 'choices'];
+    for (const key of candidates) {
+      const val = parsedData[key];
+      if (Array.isArray(val)) return val;
+    }
+    if (parsedData.choices?.[0]?.message?.content) {
+      const inner = safeParseJSON(parsedData.choices[0].message.content);
+      if (Array.isArray(inner)) return inner;
+    }
+    const firstArray = Object.values(parsedData).find((v) => Array.isArray(v));
+    if (firstArray) return firstArray;
+  }
+  if (rawResponse && typeof rawResponse === 'string') {
+    const start = rawResponse.indexOf('[');
+    const end = rawResponse.lastIndexOf(']');
+    if (start !== -1 && end !== -1 && end > start) {
+      const slice = rawResponse.slice(start, end + 1);
+      const arr = safeParseJSON(slice);
+      if (Array.isArray(arr)) return arr;
+    }
+  }
+  return null;
+}
+
 function normalizeKeywordForMatch(str) {
   if (!str || typeof str !== 'string') return '';
   return str.replace(/\s+/g, ' ').replace(/[.．…]+$/g, '').trim();
@@ -139,20 +167,21 @@ ${formattedCandidates}
   console.warn('[TopicSelectAI] Gemini raw 응답 본문 (길이 %d):\n%s', rawResponse?.length ?? 0, rawResponse ?? '(null)');
 
   const parsedData = safeParseJSON(rawResponse);
+  const selectionsArray = extractSelectionsArray(parsedData, rawResponse);
 
-  if (!parsedData || !Array.isArray(parsedData)) {
+  if (!selectionsArray || !Array.isArray(selectionsArray)) {
     console.warn('[TopicSelectAI] 응답이 배열이 아님:', rawResponse?.slice(0, 200));
     return { plan: null, error: 'AI 응답이 JSON 배열 형식이 아닙니다.' };
   }
 
-  if (parsedData.length < 6) {
-    return { plan: null, error: `AI가 ${parsedData.length}개만 선정했습니다. (6개 필요)` };
+  if (selectionsArray.length < 6) {
+    return { plan: null, error: `AI가 ${selectionsArray.length}개만 선정했습니다. (6개 필요)` };
   }
 
   const plan = writers.map((w) => ({ writer: w, topics: [] }));
   const usedKeywords = new Set();
 
-  for (const item of parsedData.slice(0, 6)) {
+  for (const item of selectionsArray.slice(0, 6)) {
     const writerId = (item.writerId || '').toLowerCase().trim();
     const keywordRaw = (item.keyword || '').trim();
 

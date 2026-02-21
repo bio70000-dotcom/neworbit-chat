@@ -594,16 +594,16 @@ async function runTopicSelectionTest() {
     await sendMessage('🧪 <b>주제 선정 테스트</b>를 시작합니다.');
 
     const pool = await getCandidatesPool(WRITERS, POSTS_PER_WRITER);
-    const SOURCE_TAGS = ['Nate_Trend', 'Naver_Dalsanchek', 'Naver_Textree', 'Naver_Bbittul', 'Seasonal'];
     const byTag = {};
-    SOURCE_TAGS.forEach((tag) => { byTag[tag] = []; });
     for (const c of pool) {
       const tag = c.sourceTag || c.source || 'Seasonal';
-      if (byTag[tag]) byTag[tag].push(c);
+      if (!byTag[tag]) byTag[tag] = [];
+      byTag[tag].push(c);
     }
+    const sourceTagsOrdered = Object.keys(byTag).sort();
 
     let poolMsg = '📋 <b>전체 풀 (' + pool.length + '개)</b>\n━━━━━━━━━━━━━━━━━━\n';
-    for (const tag of SOURCE_TAGS) {
+    for (const tag of sourceTagsOrdered) {
       const list = byTag[tag] || [];
       if (list.length === 0) continue;
       poolMsg += `\n<b>[${tag}]</b>\n`;
