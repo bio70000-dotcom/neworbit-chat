@@ -364,8 +364,11 @@ async function selectDailyTopicsWithQuota(writers, postsPerWriter = 2) {
   const { selectTopicsWithAI } = require('./topicSelectAI');
   let pool = await getCandidatesPool(writers, postsPerWriter);
   if (pool.length < 6) {
-    console.warn('[TopicSelector] 후보 부족, 기존 랜덤 할당으로 보충');
-    return selectDailyTopicsWithQuotaFallback(writers, postsPerWriter);
+    const reason = '후보 풀 6개 미만';
+    console.warn('[TopicSelector] FALLBACK_REASON=', reason);
+    const plan = await selectDailyTopicsWithQuotaFallback(writers, postsPerWriter);
+    plan.aiFailureReason = reason;
+    return plan;
   }
   await enrichPoolWithSearchVolume(pool);
   const maxRetries = 2;
@@ -378,8 +381,12 @@ async function selectDailyTopicsWithQuota(writers, postsPerWriter = 2) {
     if (plan && !plan.every((p) => p.topics.length === 0)) return plan;
 
     if (result?.apiError === true) {
-      console.warn('[TopicSelector] Gemini API 오류 → fallback 사용. 사유:', result?.error || '(원인 없음)');
-      return selectDailyTopicsWithQuotaFallback(writers, postsPerWriter);
+      const reason = result?.error || 'Gemini API 오류';
+      console.warn('[TopicSelector] FALLBACK_REASON=', reason);
+      console.warn('[TopicSelector] Gemini API 오류 → fallback 사용. 사유:', reason);
+      const plan = await selectDailyTopicsWithQuotaFallback(writers, postsPerWriter);
+      plan.aiFailureReason = reason;
+      return plan;
     }
 
     if (attempt < maxRetries) {
@@ -389,8 +396,12 @@ async function selectDailyTopicsWithQuota(writers, postsPerWriter = 2) {
       continue;
     }
 
-    console.warn('[TopicSelector] 재시도 소진 후에도 plan 없음 → fallback 사용. 사유:', result?.error || '(원인 없음)');
-    return selectDailyTopicsWithQuotaFallback(writers, postsPerWriter);
+    const reason = result?.error || '재시도 소진';
+    console.warn('[TopicSelector] FALLBACK_REASON=', reason);
+    console.warn('[TopicSelector] 재시도 소진 후에도 plan 없음 → fallback 사용. 사유:', reason);
+    const plan = await selectDailyTopicsWithQuotaFallback(writers, postsPerWriter);
+    plan.aiFailureReason = reason;
+    return plan;
   }
 }
 

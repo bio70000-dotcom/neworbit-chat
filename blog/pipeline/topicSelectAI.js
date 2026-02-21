@@ -342,6 +342,7 @@ ${formattedCandidates}
   const selectionsArray = extractSelectionsArray(parsedData, rawResponse);
 
   if (!selectionsArray || !Array.isArray(selectionsArray)) {
+    console.warn('[TopicSelectAI] FAILURE_TYPE=JSON_PARSE');
     console.warn('[TopicSelectAI] 배열 추출 실패. raw 앞 200자:', rawResponse?.slice(0, 200));
     if (parsedData != null) {
       console.warn(
@@ -360,6 +361,7 @@ ${formattedCandidates}
 
   const plan = writers.map((w) => ({ writer: w, topics: [] }));
   const usedKeywords = new Set();
+  const skippedKeywords = [];
 
   for (const item of selectionsArray.slice(0, 6)) {
     const writerId = (item.writerId || '').toLowerCase().trim();
@@ -368,6 +370,7 @@ ${formattedCandidates}
     const writerIndex = writers.findIndex((w) => (w.id || '').toLowerCase() === writerId);
     if (writerIndex === -1) {
       console.warn('[TopicSelectAI] 알 수 없는 작가 ID:', writerId);
+      skippedKeywords.push(keywordRaw.slice(0, 60));
       continue;
     }
 
@@ -378,6 +381,7 @@ ${formattedCandidates}
 
     if (!candidate) {
       console.warn('[TopicSelectAI] 풀에 없는 키워드 스킵:', keywordRaw.slice(0, 50));
+      skippedKeywords.push(keywordRaw.slice(0, 60));
       continue;
     }
 
@@ -413,6 +417,10 @@ ${formattedCandidates}
 
   const totalTopics = plan.reduce((sum, p) => sum + p.topics.length, 0);
   if (totalTopics < 6) {
+    console.warn('[TopicSelectAI] FAILURE_TYPE=MATCH_COUNT', 'matched=', totalTopics);
+    if (skippedKeywords.length > 0) {
+      console.warn('[TopicSelectAI] 매칭 실패한 키워드:', skippedKeywords.join(' | '));
+    }
     return {
       plan: null,
       error: `매칭 실패: AI는 6개를 줬으나 유효한 매칭은 ${totalTopics}개입니다. (키워드 불일치)`,

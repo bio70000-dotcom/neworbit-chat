@@ -393,6 +393,7 @@ function formatDailyReport(plan, dateStr, changedNumbers = null) {
   );
   if (isFallbackPlan) {
     msg += '\n(오늘은 AI 선정을 사용하지 못해, 소스 쿼터 기준 자동 배정입니다)\n';
+    if (plan.aiFailureReason) msg += '실패 사유: ' + plan.aiFailureReason + '\n';
   }
 
   let num = 1;
