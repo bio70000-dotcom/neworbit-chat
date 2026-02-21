@@ -204,7 +204,8 @@ function extractBlogTopic(newsTitle, searchSeed, headlineRelaxed = false) {
 
   // 정치, 사건/사고, 주식, 광고/인터뷰 등 부적합 필터링
   const excludePatterns = [
-    /정치|국회|대통령|의원|여당|야당|탄핵/,
+    /정치|국회|대통령|의원|여당|야당|탄핵|선거|국힘/,
+    /별세|의장\s*별세/i,
     /살인|사망|사고|폭행|체포|구속|재판/,
     /주가|코스피|코스닥|상장|시가총액/,
     /검찰|경찰|수사|기소|판결/,

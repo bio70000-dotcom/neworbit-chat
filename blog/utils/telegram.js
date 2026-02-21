@@ -386,6 +386,15 @@ function formatDailyReport(plan, dateStr, changedNumbers = null) {
 
   let msg = `${header}\n━━━━━━━━━━━━━━━━━━\n${dateStr}\n`;
 
+  const isFallbackPlan = plan.length > 0 && plan.every(
+    (entry) => entry.topics && entry.topics.every(
+      (t) => (t.rationale || '').includes('자동 배정 (AI 미사용)')
+    )
+  );
+  if (isFallbackPlan) {
+    msg += '\n(오늘은 AI 선정을 사용하지 못해, 소스 쿼터 기준 자동 배정입니다)\n';
+  }
+
   let num = 1;
   for (const entry of plan) {
     const name = writerIcons[entry.writer.id] || entry.writer.nickname;

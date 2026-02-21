@@ -371,7 +371,8 @@ async function selectDailyTopicsWithQuota(writers, postsPerWriter = 2) {
   const result = await selectTopicsWithAI(pool, writers);
   const plan = result?.plan;
   if (!plan || plan.every((p) => p.topics.length === 0)) {
-    console.warn('[TopicSelector] AI 선정 실패, fallback:', result?.error || '');
+    const errMsg = result?.error || '(원인 없음)';
+    console.warn('[TopicSelector] AI 선정 실패 → fallback 사용. 사유:', errMsg);
     return selectDailyTopicsWithQuotaFallback(writers, postsPerWriter);
   }
   return plan;
@@ -399,14 +400,24 @@ async function enrichTopicForReport(topic, defaultRationale, delayMs = 0) {
   if (delayMs > 0) await new Promise((r) => setTimeout(r, delayMs));
 }
 
-/** AI 미사용 시 fallback: 랜덤 할당 (시즌2/네이버2/트렌드1/구글뉴스1). DB 확정 키워드 제외 */
+/** 작가별 fallback 허용 소스 (쿼터: seasonal 2, naver 2, nate 1, google 1 유지) */
+const FALLBACK_WRITER_ALLOWED_SOURCES = {
+  dalsanchek: ['seasonal', 'naver_news'],
+  textree: ['naver_news', 'nate_trend', 'google_news'],
+  bbittul: ['naver_news', 'nate_trend', 'google_news'],
+};
+
+/** AI 미사용 시 fallback: 작가별 허용 소스만 사용해 쿼터 분배 (시즌2/네이버2/트렌드1/구글뉴스1). DB 확정 키워드 제외 */
 async function selectDailyTopicsWithQuotaFallback(writers, postsPerWriter = 2) {
   const total = writers.length * postsPerWriter;
-  const sourceQuota = ['seasonal', 'seasonal', 'naver_news', 'naver_news', 'nate_trend', 'google_news'];
-  for (let i = sourceQuota.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [sourceQuota[i], sourceQuota[j]] = [sourceQuota[j], sourceQuota[i]];
-  }
+  // 쿼터를 작가별로 분배: 달산책 [seasonal, seasonal], 텍스트리/삐뚤빼뚤가 [naver,nate] vs [naver,google] 한 쌍으로만
+  const pick = Math.random() < 0.5 ? 0 : 1;
+  const writerSourceSlots = [
+    ['seasonal', 'seasonal'],
+    pick === 0 ? ['naver_news', 'nate_trend'] : ['naver_news', 'google_news'],
+    pick === 0 ? ['naver_news', 'google_news'] : ['naver_news', 'nate_trend'],
+  ];
+
   let usedKeywords = new Set();
   try {
     const dbExcluded = await getExcludedKeywordsForSelection({ currentYear: new Date().getFullYear() });
@@ -415,30 +426,37 @@ async function selectDailyTopicsWithQuotaFallback(writers, postsPerWriter = 2) {
     console.warn('[TopicSelector] fallback DB 제외 키워드 조회 실패:', e.message);
   }
   const plan = writers.map((w) => ({ writer: w, topics: [] }));
-
   const allSources = ['seasonal', 'naver_news', 'nate_trend', 'google_news'];
-  for (let slot = 0; slot < total; slot++) {
-    const writerIndex = Math.floor(slot / postsPerWriter);
+
+  for (let writerIndex = 0; writerIndex < writers.length; writerIndex++) {
     const writer = writers[writerIndex];
-    const source = sourceQuota[slot];
-    let topic = await getTopicFromSource(writer, source, usedKeywords);
-    if (!topic) {
-      const other = allSources.filter((s) => s !== source);
-      topic = await trySourcesInOrder(other, writer, usedKeywords);
+    const sources = writerSourceSlots[writerIndex] || ['naver_news', 'nate_trend'];
+    const allowed = FALLBACK_WRITER_ALLOWED_SOURCES[writer.id] || allSources;
+
+    for (const source of sources) {
+      let topic = await getTopicFromSource(writer, source, usedKeywords);
+      if (!topic) {
+        const other = allowed.filter((s) => s !== source);
+        topic = await trySourcesInOrder(other, writer, usedKeywords);
+      }
+      if (!topic) {
+        topic = await trySourcesInOrder(allSources, writer, usedKeywords);
+      }
+      if (!topic) {
+        const writerKws = getWriterKeywords(writer);
+        topic = { keyword: `${new Date().getFullYear()}년 ${writerKws[0]} 트렌드`, category: writerKws[0], source: 'default' };
+      }
+      plan[writerIndex].topics.push(topic);
+      usedKeywords.add(topic.keyword);
     }
-    if (!topic) {
-      const writerKws = getWriterKeywords(writer);
-      topic = { keyword: `${new Date().getFullYear()}년 ${writerKws[0]} 트렌드`, category: writerKws[0], source: 'default' };
-    }
-    plan[writerIndex].topics.push(topic);
-    usedKeywords.add(topic.keyword);
   }
 
   // fallback 경로도 보고서에 선정 사유·검색량 표시되도록 보강
   const ENRICH_DELAY_MS = 150;
+  const FALLBACK_RATIONALE_PREFIX = '자동 배정 (AI 미사용)';
   for (const entry of plan) {
     for (const topic of entry.topics) {
-      const rationale = `소스별 할당 (${topic.source})`;
+      const rationale = `${FALLBACK_RATIONALE_PREFIX} · 소스: ${topic.source}`;
       await enrichTopicForReport(topic, rationale, ENRICH_DELAY_MS);
     }
   }
