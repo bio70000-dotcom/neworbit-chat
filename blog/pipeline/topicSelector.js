@@ -1,12 +1,13 @@
 /**
  * 글감 선정 모듈
- * 국내 소스 3종(네이트 실시간, 네이버 뉴스 작가별, 시즌)으로 Topic Pool ~25개 구성.
+ * 국내 소스 3종 + 구글 뉴스 RSS로 Topic Pool 약 35개 구성.
  * 구글 트렌드/유튜브/시그널 배제.
  */
 
 const calendar = require('../calendar.json');
 const { getNateTrendTopics } = require('../utils/nateTrends');
 const { getNaverNewsTopics, getNaverTopicsByWriterQueries } = require('../utils/naverTopics');
+const { getGoogleNewsTopicsByCategory } = require('../utils/googleNewsRss');
 const { isDuplicate } = require('../utils/dedup');
 const { getNaverBlogSearchTotal, getSearchVolumeLabel } = require('../utils/searchVolume');
 const { getExcludedKeywordsForSelection } = require('../utils/publishedPostsDb');
@@ -140,6 +141,29 @@ async function getNaverTopic(writer, excludeKeywords = new Set()) {
 }
 
 /**
+ * 구글 뉴스 RSS에서 작가 newsCategories에 맞는 주제 1개
+ */
+async function getGoogleNewsTopic(writer, excludeKeywords = new Set()) {
+  try {
+    const newsCats = writer?.newsCategories;
+    const list = await getGoogleNewsTopicsByCategory({ totalTarget: 15 });
+    const preferred = Array.isArray(newsCats) && newsCats.length > 0
+      ? list.filter((t) => newsCats.includes(t.category))
+      : list;
+    const ordered = preferred.length > 0 ? preferred : list;
+    for (const topic of ordered) {
+      if (excludeKeywords.has(topic.keyword)) continue;
+      const dup = await isDuplicate(topic.keyword);
+      if (!dup) return topic;
+    }
+    return null;
+  } catch (e) {
+    console.warn(`[TopicSelector] 구글 뉴스 주제 수집 실패: ${e.message}`);
+    return null;
+  }
+}
+
+/**
  * 네이버 뉴스에서 작가 분야에 맞는 주제 최대 maxCount개
  */
 async function getNaverTopics(writer, excludeKeywords = new Set(), maxCount = 2) {
@@ -173,6 +197,9 @@ async function trySourcesInOrder(sources, writer, excludeKeywords = new Set()) {
       case 'naver_news':
         topic = await getNaverTopic(writer, excludeKeywords);
         break;
+      case 'google_news':
+        topic = await getGoogleNewsTopic(writer, excludeKeywords);
+        break;
       case 'seasonal': {
         const seasonal = getSeasonalTopics(writer);
         for (const s of seasonal) {
@@ -190,9 +217,9 @@ async function trySourcesInOrder(sources, writer, excludeKeywords = new Set()) {
     }
   }
 
-  // 최종 fallback: 시즌 → 네이버 → 트렌드 순환
+  // 최종 fallback: 시즌 → 네이버 → 구글 뉴스 → 트렌드 순환
   console.warn('[TopicSelector] 모든 소스 실패, fallback 재시도');
-  const fallbackOrder = ['seasonal', 'naver_news', 'nate_trend'];
+  const fallbackOrder = ['seasonal', 'naver_news', 'google_news', 'nate_trend'];
   for (const fb of fallbackOrder) {
     let topic = null;
     if (fb === 'seasonal') {
@@ -200,6 +227,8 @@ async function trySourcesInOrder(sources, writer, excludeKeywords = new Set()) {
       if (seasonal.length > 0) topic = seasonal[0];
     } else if (fb === 'naver_news') {
       topic = await getNaverTopic(writer, excludeKeywords);
+    } else if (fb === 'google_news') {
+      topic = await getGoogleNewsTopic(writer, excludeKeywords);
     } else if (fb === 'nate_trend') {
       topic = await getNateTopic(writer, excludeKeywords);
     }
@@ -235,6 +264,9 @@ async function getTopicFromSource(writer, source, excludeKeywords = new Set()) {
       break;
     case 'nate_trend':
       topic = await getNateTopic(writer, excludeKeywords);
+      break;
+    case 'google_news':
+      topic = await getGoogleNewsTopic(writer, excludeKeywords);
       break;
     default:
       break;
@@ -273,12 +305,13 @@ async function getCandidatesPool(writers, postsPerWriter = 2) {
   const wT = writers.find((w) => w.id === 'textree');
   const wB = writers.find((w) => w.id === 'bbittul');
 
-  const [nateList, seasonalList, naverDalsanchek, naverTextree, naverBbittul] = await Promise.all([
+  const [nateList, seasonalList, naverDalsanchek, naverTextree, naverBbittul, googleNewsList] = await Promise.all([
     getNateTrendTopics(10).catch((e) => { console.warn('[TopicSelector] 네이트 수집 실패:', e.message); return []; }),
     Promise.resolve(getSeasonalTopicsForPool(2)),
     wD ? getNaverTopicsByWriterQueries(wD, 5).catch((e) => { console.warn('[TopicSelector] 네이버(달산책) 실패:', e.message); return []; }) : Promise.resolve([]),
     wT ? getNaverTopicsByWriterQueries(wT, 5).catch((e) => { console.warn('[TopicSelector] 네이버(텍스트리) 실패:', e.message); return []; }) : Promise.resolve([]),
     wB ? getNaverTopicsByWriterQueries(wB, 3).catch((e) => { console.warn('[TopicSelector] 네이버(삐뚤빼뚤) 실패:', e.message); return []; }) : Promise.resolve([]),
+    getGoogleNewsTopicsByCategory({ totalTarget: 10 }).catch((e) => { console.warn('[TopicSelector] 구글 뉴스 수집 실패:', e.message); return []; }),
   ]);
 
   const batches = [
@@ -286,13 +319,17 @@ async function getCandidatesPool(writers, postsPerWriter = 2) {
     [naverDalsanchek, 'naver_news', 'Naver_Dalsanchek'],
     [naverTextree, 'naver_news', 'Naver_Textree'],
     [naverBbittul, 'naver_news', 'Naver_Bbittul'],
+    [googleNewsList, 'google_news_rss', null],
     [seasonalList, 'seasonal', 'Seasonal'],
   ];
   for (const [list, sourceLabel, sourceTag] of batches) {
-    for (const t of list || []) await addToPool(t, sourceLabel, sourceTag);
+    for (const t of list || []) {
+      const tag = sourceTag || t.sourceTag || sourceLabel;
+      await addToPool(t, sourceLabel, tag);
+    }
   }
 
-  console.log(`[TopicSelector] 후보 풀: ${pool.length}개 (네이트+네이버 작가별+시즌, ~25개 목표)`);
+  console.log(`[TopicSelector] 후보 풀: ${pool.length}개 (네이트+네이버+구글뉴스+시즌, ~35개 목표)`);
   return pool;
 }
 
@@ -359,10 +396,10 @@ async function enrichTopicForReport(topic, defaultRationale, delayMs = 0) {
   if (delayMs > 0) await new Promise((r) => setTimeout(r, delayMs));
 }
 
-/** AI 미사용 시 fallback: 기존 랜덤 할당 (시즌2/네이버2/트렌드2). DB 확정 키워드 제외 */
+/** AI 미사용 시 fallback: 랜덤 할당 (시즌2/네이버2/트렌드1/구글뉴스1). DB 확정 키워드 제외 */
 async function selectDailyTopicsWithQuotaFallback(writers, postsPerWriter = 2) {
   const total = writers.length * postsPerWriter;
-  const sourceQuota = ['seasonal', 'seasonal', 'naver_news', 'naver_news', 'nate_trend', 'nate_trend'];
+  const sourceQuota = ['seasonal', 'seasonal', 'naver_news', 'naver_news', 'nate_trend', 'google_news'];
   for (let i = sourceQuota.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [sourceQuota[i], sourceQuota[j]] = [sourceQuota[j], sourceQuota[i]];
@@ -376,13 +413,14 @@ async function selectDailyTopicsWithQuotaFallback(writers, postsPerWriter = 2) {
   }
   const plan = writers.map((w) => ({ writer: w, topics: [] }));
 
+  const allSources = ['seasonal', 'naver_news', 'nate_trend', 'google_news'];
   for (let slot = 0; slot < total; slot++) {
     const writerIndex = Math.floor(slot / postsPerWriter);
     const writer = writers[writerIndex];
     const source = sourceQuota[slot];
     let topic = await getTopicFromSource(writer, source, usedKeywords);
     if (!topic) {
-      const other = ['seasonal', 'naver_news', 'nate_trend'].filter((s) => s !== source);
+      const other = allSources.filter((s) => s !== source);
       topic = await trySourcesInOrder(other, writer, usedKeywords);
     }
     if (!topic) {
@@ -411,7 +449,7 @@ async function selectDailyTopicsWithQuotaFallback(writers, postsPerWriter = 2) {
  */
 async function selectTopics(writer, options = {}) {
   const excludeKeywords = options.excludeKeywords || new Set();
-  const fallbackSources = ['seasonal', 'naver_news', 'nate_trend'];
+  const fallbackSources = ['seasonal', 'naver_news', 'google_news', 'nate_trend'];
   const topic = await trySourcesInOrder(fallbackSources, writer, excludeKeywords);
   return [topic];
 }

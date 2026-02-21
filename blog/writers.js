@@ -24,6 +24,8 @@ const WRITERS = [
 
     // 전문 분야 / 선호 카테고리
     categories: ['라이프스타일', '감성', '인간관계', '자기계발', '여행'],
+    // 구글 뉴스 카테고리 매칭 (주제 선정 시 Google_News_* 소스 우선 배정)
+    newsCategories: ['건강', '엔터테이먼트'],
 
     // 인간화 페르소나 (humanizer.js에서 사용)
     persona: {
@@ -65,6 +67,7 @@ const WRITERS = [
     ghostAuthorId: null,
 
     categories: ['IT', '테크', '생산성', '경제', '리뷰'],
+    newsCategories: ['비즈니스', '과학/기술'],
 
     persona: {
       name: '텍스트리',
@@ -105,6 +108,7 @@ const WRITERS = [
     ghostAuthorId: null,
 
     categories: ['트렌드', '엔터', 'MBTI', '먹거리', '꿀팁'],
+    newsCategories: ['엔터테이먼트', '스포츠', '대한민국'],
 
     persona: {
       name: '삐뚤빼뚤',

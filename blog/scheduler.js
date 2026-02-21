@@ -221,10 +221,12 @@ function normalizeSourceForReselect(source) {
   const s = source.toLowerCase().replace(/_/g, '');
   if (s === 'natetrend') return 'nate_trend';
   if (s === 'seasonal') return 'seasonal';
+  if (s.includes('googlenews') || s.includes('google_news')) return 'google_news';
   if (s.includes('naver') || s.includes('dalsanchek') || s.includes('textree') || s.includes('bbittul')) return 'naver_news';
   if (source.toLowerCase() === 'nate_trend') return 'nate_trend';
   if (source.toLowerCase() === 'naver_news') return 'naver_news';
   if (source.toLowerCase() === 'seasonal') return 'seasonal';
+  if (source.toLowerCase() === 'google_news') return 'google_news';
   return 'naver_news';
 }
 

@@ -1,6 +1,6 @@
 /**
  * AI(Gemini)로 일일 6편 주제 추론 선정 + 선정 이유 생성
- * 전체 풀(~25개)에서 각 작가 페르소나에 맞는 주제를 선정하여 JSON으로 반환.
+ * 전체 풀(~35개)에서 각 작가 페르소나에 맞는 주제를 선정하여 JSON으로 반환.
  */
 
 const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
@@ -88,12 +88,13 @@ function findBestMatchCandidate(selKeyword, candidatesPool, usedKeywords) {
 async function selectTopicsWithAI(candidatesPool, writers) {
   const writersDesc = writers
     .map(
-      (w) =>
-        `- ID: "${w.id}", 닉네임: "${w.nickname}", 전문분야: [${(w.categories || []).join(', ')}], 성향: ${w.bio || ''}`
+      (w) => {
+        const newsCats = (w.newsCategories || []).length ? `, 구글뉴스카테고리: [${w.newsCategories.join(', ')}]` : '';
+        return `- ID: "${w.id}", 닉네임: "${w.nickname}", 전문분야: [${(w.categories || []).join(', ')}]${newsCats}, 성향: ${w.bio || ''}`;
+      }
     )
     .join('\n');
 
-  const SOURCE_TAGS = ['Nate_Trend', 'Naver_Dalsanchek', 'Naver_Textree', 'Naver_Bbittul', 'Seasonal'];
   const formattedCandidates = candidatesPool
     .map((c, i) => {
       const tag = c.sourceTag || c.source || 'Seasonal';
@@ -112,17 +113,17 @@ ${writersDesc}
 ${formattedCandidates}
 
 ## 배정 규칙
-1. **적합성 최우선:** 작가의 '전문분야'와 '성향'에 가장 잘 어울리는 소스의 주제를 매칭하라.
-   - dalsanchek: 감성, 힐링, 여행 -> [Naver_Dalsanchek], [Seasonal] 우선
-   - textree: IT, 경제, 분석 -> [Naver_Textree], [Nate_Trend] 우선
-   - bbittul: 트렌드, 이슈, 재미 -> [Nate_Trend], [Naver_Bbittul] 우선
+1. **적합성 최우선:** 작가의 '전문분야', '구글뉴스카테고리', '성향'에 가장 잘 어울리는 소스의 주제를 매칭하라.
+   - dalsanchek: 감성, 힐링, 여행 -> [Naver_Dalsanchek], [Seasonal], [Google_News_건강], [Google_News_엔터테이먼트] 우선
+   - textree: IT, 경제, 분석 -> [Naver_Textree], [Nate_Trend], [Google_News_비즈니스], [Google_News_과학_기술] 우선
+   - bbittul: 트렌드, 이슈, 재미 -> [Nate_Trend], [Naver_Bbittul], [Google_News_엔터테이먼트], [Google_News_스포츠], [Google_News_대한민국] 우선
 2. **복사 필수:** 선정된 주제의 'keyword'는 후보 풀에 적힌 텍스트를 **절대 수정하지 말고 그대로** 사용하라.
 3. **중복 금지:** 6개의 주제는 모두 달라야 한다.
 4. **결과물:** 반드시 아래 JSON 형식의 배열만 출력하라. (마크다운 없이 JSON만)
 
 ## 응답 형식 (JSON Array)
 [
-  { "writerId": "dalsanchek", "keyword": "후보 풀에 있는 키워드 그대로 복사", "source": "Naver_Dalsanchek", "rationale": "선정 이유 한 줄" },
+  { "writerId": "dalsanchek", "keyword": "후보 풀에 있는 키워드 그대로 복사", "source": "Naver_Dalsanchek 또는 Google_News_건강 등", "rationale": "선정 이유 한 줄" },
   ... (총 6개 객체)
 ]
 `;
