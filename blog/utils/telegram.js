@@ -404,9 +404,10 @@ function formatDailyReport(plan, dateStr, changedNumbers = null) {
         }
       }
       msg += ` ${num}. [${topic.source}] ${topic.keyword}${volSuffix}${changed}\n`;
-      if (topic.rationale) {
-        msg += `   → ${topic.rationale}\n`;
-      }
+      const rationaleDisplay = (topic.rationale && topic.rationale.trim() && topic.rationale.trim() !== 'AI 선정')
+        ? topic.rationale.trim()
+        : '작가·소스 적합성 기반 선정';
+      msg += `   → ${rationaleDisplay}\n`;
       num++;
     }
   }

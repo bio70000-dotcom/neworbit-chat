@@ -225,6 +225,12 @@ async function selectTopicsWithAI(candidatesPool, writers) {
     )
     .join('\n');
 
+  const writerTopicFitLines = [
+    '달산책(dalsanchek): 라이프스타일·감성·여행·힐링·일상에 맞는 주제만 배정. IT/경제/정치 성격이면 배정 금지.',
+    '텍스트리(textree): IT·테크·경제·리뷰·생산성에 맞는 주제만 배정. 연예·먹거리·정치 성격이면 배정 금지.',
+    '삐뚤빼뚤(bbittul): 트렌드·엔터·먹거리·꿀팁·리뷰 성격만 배정. 정치·선거·인물 논란 등은 전문영역이 아니므로 배정 금지.',
+  ];
+
   const formattedCandidates = candidatesPool
     .map((c, i) => {
       const tag = c.sourceTag || c.source || 'Seasonal';
@@ -241,21 +247,27 @@ async function selectTopicsWithAI(candidatesPool, writers) {
 ## 작가 정보
 ${writersDesc}
 
-## 각 작가별 배정 가능 소스(태그) — 반드시 이 태그가 붙은 풀 항목만 해당 작가에게 배정할 것
+## 각 작가별 배정 가능 소스(태그) — 이 태그가 붙은 풀 항목만 해당 작가에게 배정 가능
 ${allowedSourcesBlock}
+
+## 각 작가에게 배정할 주제 성격 (취향·전문영역 준수)
+${writerTopicFitLines.join('\n')}
 
 ## 후보 풀 (각 항목은 [소스태그] 키워드 형식. 여기 있는 텍스트 그대로 사용)
 ${formattedCandidates}
 
 ## 배정 규칙
-1. **소스 제한 필수:** 각 작가에게는 **반드시** 위 '배정 가능 소스(태그)'에 해당하는 풀 항목만 선정하라. 후보 풀의 각 항목은 \`[소스태그] 키워드\` 형식이므로, 해당 작가의 배정 가능 소스 태그가 붙은 항목만 선택하라. 다른 작가 전용 소스 태그가 붙은 항목은 그 작가에게 배정하지 마라.
+1. **소스 + 내용 적합성 둘 다 필수:**
+   - (1) 해당 작가의 **배정 가능 소스(태그)**에 해당하는 풀 항목만 선정할 것.
+   - (2) **주제 키워드/제목의 성격이 해당 작가의 전문분야(categories)·성향(bio)과 부합하는 항목만** 그 작가에게 배정할 것. 소스 태그가 맞아도, 주제 내용이 작가의 취향·전문영역과 무관하면 그 작가에게 배정하지 말 것.
 2. **복사 필수:** 선정된 주제의 'keyword'는 후보 풀에 적힌 텍스트를 **절대 수정하지 말고 그대로** 사용하라.
 3. **중복 금지:** 6개의 주제는 모두 달라야 한다.
-4. **결과물:** 반드시 JSON 배열만 출력하라. 객체로 감싸지 말고, 설명이나 접두 문장 없이 응답 전체가 \`[\` 로 시작하는 배열 하나만 출력할 것. (마크다운 없이 JSON만)
+4. **rationale:** rationale 필드에는 **해당 작가의 전문분야·성향에 이 주제가 맞는 이유**를 한 줄로 구체적으로 작성하라 (예: 달산책의 여행·힐링 성향에 부합, 삐뚤빼뚤의 트렌드·엔터 영역에 맞는 주제).
+5. **결과물:** 반드시 JSON 배열만 출력하라. 객체로 감싸지 말고, 설명이나 접두 문장 없이 응답 전체가 \`[\` 로 시작하는 배열 하나만 출력할 것. (마크다운 없이 JSON만)
 
 ## 응답 형식 (JSON Array)
 [
-  { "writerId": "dalsanchek", "keyword": "후보 풀에 있는 키워드 그대로 복사", "source": "Naver_Dalsanchek 또는 Google_News_건강 등", "rationale": "선정 이유 한 줄" },
+  { "writerId": "dalsanchek", "keyword": "후보 풀에 있는 키워드 그대로 복사", "source": "Naver_Dalsanchek 또는 Google_News_건강 등", "rationale": "해당 작가 전문분야·성향에 맞는 이유 한 줄" },
   ... (총 6개 객체)
 ]
 `;
