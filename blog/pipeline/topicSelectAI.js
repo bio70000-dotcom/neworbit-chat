@@ -182,9 +182,40 @@ function findBestMatchCandidate(selKeyword, candidatesPool, usedKeywords) {
 }
 
 /**
+ * 작가별 배정 가능 소스(태그) 목록 생성. writers.js 단일 정보원 기반.
+ * - Naver_ + id 첫 글자 대문자 (dalsanchek → Naver_Dalsanchek)
+ * - newsCategories → Google_News_건강 등 (슬래시는 언더스코어로)
+ * - dalsanchek: Seasonal 추가, textree/bbittul: Nate_Trend 추가
+ */
+function getPreferredSourceTagsForWriter(writer) {
+  if (!writer || !writer.id) return [];
+  const id = (writer.id || '').toLowerCase();
+  const tags = new Set();
+  const naverTag = 'Naver_' + id.charAt(0).toUpperCase() + id.slice(1);
+  tags.add(naverTag);
+  const newsCats = writer.newsCategories || [];
+  for (const cat of newsCats) {
+    if (cat && typeof cat === 'string') {
+      tags.add('Google_News_' + String(cat).replace(/\//g, '_'));
+    }
+  }
+  if (id === 'dalsanchek') tags.add('Seasonal');
+  if (id === 'textree' || id === 'bbittul') tags.add('Nate_Trend');
+  return [...tags];
+}
+
+/**
  * 후보 풀과 작가 정보로 AI가 6편 선정 (2 per writer) + 선정 이유
  */
 async function selectTopicsWithAI(candidatesPool, writers) {
+  const writerPreferredTagsMap = new Map();
+  const writerPreferredTagsLines = [];
+  for (const w of writers) {
+    const tags = getPreferredSourceTagsForWriter(w);
+    writerPreferredTagsMap.set((w.id || '').toLowerCase(), new Set(tags));
+    writerPreferredTagsLines.push(`- ID "${w.id}": 배정 가능 소스(태그) = ${tags.map((t) => `[${t}]`).join(', ')}`);
+  }
+
   const writersDesc = writers
     .map(
       (w) => {
@@ -201,6 +232,8 @@ async function selectTopicsWithAI(candidatesPool, writers) {
     })
     .join('\n');
 
+  const allowedSourcesBlock = writerPreferredTagsLines.join('\n');
+
   const prompt = `
 너는 블로그 편집장이다. 아래 제공된 [후보 풀]에서 오늘 작성할 블로그 주제 6개를 선정하라.
 작가 3명에게 각각 2개씩, 총 6개의 주제를 배정해야 한다.
@@ -208,14 +241,14 @@ async function selectTopicsWithAI(candidatesPool, writers) {
 ## 작가 정보
 ${writersDesc}
 
-## 후보 풀 (여기 있는 텍스트 그대로 사용)
+## 각 작가별 배정 가능 소스(태그) — 반드시 이 태그가 붙은 풀 항목만 해당 작가에게 배정할 것
+${allowedSourcesBlock}
+
+## 후보 풀 (각 항목은 [소스태그] 키워드 형식. 여기 있는 텍스트 그대로 사용)
 ${formattedCandidates}
 
 ## 배정 규칙
-1. **적합성 최우선:** 작가의 '전문분야', '구글뉴스카테고리', '성향'에 가장 잘 어울리는 소스의 주제를 매칭하라.
-   - dalsanchek: 감성, 힐링, 여행 -> [Naver_Dalsanchek], [Seasonal], [Google_News_건강], [Google_News_엔터테이먼트] 우선
-   - textree: IT, 경제, 분석 -> [Naver_Textree], [Nate_Trend], [Google_News_비즈니스], [Google_News_과학_기술] 우선
-   - bbittul: 트렌드, 이슈, 재미 -> [Nate_Trend], [Naver_Bbittul], [Google_News_엔터테이먼트], [Google_News_스포츠], [Google_News_대한민국] 우선
+1. **소스 제한 필수:** 각 작가에게는 **반드시** 위 '배정 가능 소스(태그)'에 해당하는 풀 항목만 선정하라. 후보 풀의 각 항목은 \`[소스태그] 키워드\` 형식이므로, 해당 작가의 배정 가능 소스 태그가 붙은 항목만 선택하라. 다른 작가 전용 소스 태그가 붙은 항목은 그 작가에게 배정하지 마라.
 2. **복사 필수:** 선정된 주제의 'keyword'는 후보 풀에 적힌 텍스트를 **절대 수정하지 말고 그대로** 사용하라.
 3. **중복 금지:** 6개의 주제는 모두 달라야 한다.
 4. **결과물:** 반드시 JSON 배열만 출력하라. 객체로 감싸지 말고, 설명이나 접두 문장 없이 응답 전체가 \`[\` 로 시작하는 배열 하나만 출력할 것. (마크다운 없이 JSON만)
@@ -282,6 +315,18 @@ ${formattedCandidates}
 
     if (usedKeywords.has(candidate.keyword)) continue;
     usedKeywords.add(candidate.keyword);
+
+    const sourceTag = (candidate.sourceTag || candidate.source || '').trim();
+    const allowedTags = writerPreferredTagsMap.get(writerId);
+    if (allowedTags && sourceTag && !allowedTags.has(sourceTag)) {
+      console.warn(
+        '[TopicSelectAI] 작가 %s에 부적합 소스 "%s" 선정됨 (배정 가능: %s). 키워드: %s',
+        writerId,
+        sourceTag,
+        [...allowedTags].join(', '),
+        keywordRaw.slice(0, 60)
+      );
+    }
 
     const topic = {
       keyword: candidate.keyword,
