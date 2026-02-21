@@ -311,7 +311,7 @@ async function getCandidatesPool(writers, postsPerWriter = 2) {
     wD ? getNaverTopicsByWriterQueries(wD, 5).catch((e) => { console.warn('[TopicSelector] 네이버(달산책) 실패:', e.message); return []; }) : Promise.resolve([]),
     wT ? getNaverTopicsByWriterQueries(wT, 5).catch((e) => { console.warn('[TopicSelector] 네이버(텍스트리) 실패:', e.message); return []; }) : Promise.resolve([]),
     wB ? getNaverTopicsByWriterQueries(wB, 3).catch((e) => { console.warn('[TopicSelector] 네이버(삐뚤빼뚤) 실패:', e.message); return []; }) : Promise.resolve([]),
-    getGoogleNewsTopicsByCategory({ totalTarget: 10 }).catch((e) => { console.warn('[TopicSelector] 구글 뉴스 수집 실패:', e.message); return []; }),
+    getGoogleNewsTopicsByCategory({ totalTarget: 15 }).catch((e) => { console.warn('[TopicSelector] 구글 뉴스 수집 실패:', e.message); return []; }),
   ]);
   if (!googleNewsList || googleNewsList.length === 0) {
     console.warn('[TopicSelector] 구글 뉴스 수집 결과 0건');

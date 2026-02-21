@@ -1,7 +1,7 @@
 /**
  * 구글 뉴스 RSS (한국 hl=ko, gl=KR) 카테고리별 헤드라인 수집
  * 풀 호환 형식: { keyword, category, source: 'google_news_rss', sourceTag }
- * 카테고리: 대한민국, 비즈니스, 과학/기술, 엔터테이먼트, 스포츠, 건강
+ * 카테고리: 대한민국, 비즈니스, 과학/기술, 엔터테이먼트, 스포츠, 건강, 세계
  */
 
 const KR_PARAMS = 'hl=ko&gl=KR&ceid=KR%3Ako';
@@ -13,6 +13,7 @@ const TOPIC_IDS = {
   엔터테이먼트: 'CAAqJggKIiBDQkFTRWdvSUwyMHZNREpxYW5RU0FtdHZHZ0pMVWlnQVAB',
   스포츠: 'CAAqJggKIiBDQkFTRWdvSUwyMHZNRFp1ZEdvU0FtVnVHZ0pWVXlnQVAB',
   건강: 'CAAqIQgKIhtDQkFTRGdvSUwyMHZNR3QwTlRFU0FtdHZLQUFQAQ',
+  세계: 'CAAqJggKIiBDQkFTRWdvSUwyMHZNRGx1YlY4U0FtdHZHZ0pMVWlnQVAB',
 };
 
 /** 대한민국 토픽 RSS (메인 대신 토픽 URL 사용) */
