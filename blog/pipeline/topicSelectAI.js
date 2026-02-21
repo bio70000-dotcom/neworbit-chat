@@ -46,6 +46,12 @@ async function callGemini(prompt, maxTokens = 4096) {
   }
 }
 
+/** trailing comma 제거 ( ] 또는 } 앞의 , 제거) — Gemini가 가끔 넣음 */
+function removeTrailingCommas(jsonStr) {
+  if (!jsonStr || typeof jsonStr !== 'string') return jsonStr;
+  return jsonStr.replace(/,(\s*[}\]])/g, '$1');
+}
+
 /** JSON 파싱 헬퍼. 접두 설명문 제거, 마크다운 코드 블록 제거 후 파싱 */
 function safeParseJSON(raw) {
   if (raw == null || typeof raw !== 'string') return null;
@@ -53,16 +59,13 @@ function safeParseJSON(raw) {
   s = s.replace(/```json/gi, '').replace(/```/g, '').trim();
   const firstBrace = s.search(/[\[{]/);
   if (firstBrace > 0) s = s.slice(firstBrace);
-  try {
-    return JSON.parse(s);
-  } catch (e) {
+  for (const candidate of [s, removeTrailingCommas(s), s.replace(/\r\n/g, '\n')]) {
     try {
-      return JSON.parse(s.trim());
-    } catch (e2) {
-      console.error('[TopicSelectAI] JSON 파싱 실패 raw:', raw.slice(0, 100));
-      return null;
-    }
+      return JSON.parse(candidate);
+    } catch (_) {}
   }
+  console.error('[TopicSelectAI] JSON 파싱 실패 raw 앞 150자:', raw.slice(0, 150));
+  return null;
 }
 
 /** raw 문자열에서 괄호 균형으로 첫 번째 JSON 배열 구간 추출 (문자열 내 ] 대비) */
@@ -101,7 +104,20 @@ function extractArraySliceFromRaw(raw) {
   return null;
 }
 
-/** 파싱 결과 또는 raw에서 선정 배열 추출. 객체 래퍼·한 단계 중첩·raw 괄호 균형 대비 */
+/** 객체 트리에서 첫 배열을 재귀 탐색 (최대 깊이 5) */
+function findFirstArrayInObject(obj, depth = 0) {
+  if (depth > 5 || obj == null) return null;
+  if (Array.isArray(obj)) return obj;
+  if (typeof obj !== 'object') return null;
+  for (const v of Object.values(obj)) {
+    if (Array.isArray(v)) return v;
+    const found = findFirstArrayInObject(v, depth + 1);
+    if (found) return found;
+  }
+  return null;
+}
+
+/** 파싱 결과 또는 raw에서 선정 배열 추출. 객체 래퍼·다단계 중첩·raw 괄호 균형 대비 */
 function extractSelectionsArray(parsedData, rawResponse) {
   if (Array.isArray(parsedData)) return parsedData;
   const objectKeys = [
@@ -113,6 +129,7 @@ function extractSelectionsArray(parsedData, rawResponse) {
     'output',
     'items',
     'topic_selections',
+    'topicSelections',
   ];
   if (parsedData && typeof parsedData === 'object') {
     for (const key of objectKeys) {
@@ -129,10 +146,13 @@ function extractSelectionsArray(parsedData, rawResponse) {
     }
     const firstArray = Object.values(parsedData).find((v) => Array.isArray(v));
     if (firstArray) return firstArray;
+    const deepArray = findFirstArrayInObject(parsedData);
+    if (deepArray) return deepArray;
   }
   if (rawResponse && typeof rawResponse === 'string') {
-    const slice = extractArraySliceFromRaw(rawResponse);
+    let slice = extractArraySliceFromRaw(rawResponse);
     if (slice) {
+      slice = removeTrailingCommas(slice);
       const arr = safeParseJSON(slice);
       if (Array.isArray(arr)) return arr;
     }
